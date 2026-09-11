@@ -1,0 +1,192 @@
+import type { Brand, Category, Product } from '../../domain/types'
+import {
+  CUP_SIZE,
+  DRINK_ADD_ONS,
+  DRINK_REMOVALS,
+  FOOD_ADD_ONS,
+  FOOD_REMOVALS,
+  SPICE_LEVEL,
+} from './modifiers'
+
+export const BRAND_FOOD = 'a1000000-0000-4000-8000-000000000001'
+export const BRAND_DRINKS = 'a1000000-0000-4000-8000-000000000002'
+
+export const BRANDS: Brand[] = [
+  { id: BRAND_FOOD, name: 'Food', colour: '#ef6c35', softColour: '#fff0e8' },
+  { id: BRAND_DRINKS, name: 'Drinks', colour: '#087f8c', softColour: '#e4f6f7' },
+]
+
+const CAT_NASI = 'b1000000-0000-4000-8000-000000000001'
+const CAT_BURGER = 'b1000000-0000-4000-8000-000000000002'
+const CAT_MEE = 'b1000000-0000-4000-8000-000000000003'
+const CAT_SIDES = 'b1000000-0000-4000-8000-000000000004'
+const CAT_KOPI = 'b1000000-0000-4000-8000-000000000005'
+const CAT_TEH = 'b1000000-0000-4000-8000-000000000006'
+const CAT_SEJUK = 'b1000000-0000-4000-8000-000000000007'
+
+export const CATEGORIES: Category[] = [
+  { id: CAT_NASI, name: 'Rice', brandId: BRAND_FOOD },
+  { id: CAT_BURGER, name: 'Burgers', brandId: BRAND_FOOD },
+  { id: CAT_MEE, name: 'Noodles', brandId: BRAND_FOOD },
+  { id: CAT_SIDES, name: 'Sides', brandId: BRAND_FOOD },
+  { id: CAT_KOPI, name: 'Coffee', brandId: BRAND_DRINKS },
+  { id: CAT_TEH, name: 'Tea', brandId: BRAND_DRINKS },
+  { id: CAT_SEJUK, name: 'Cold Drinks', brandId: BRAND_DRINKS },
+]
+
+export const PRODUCTS: Product[] = [
+  {
+    id: '20000000-0000-4000-8000-000000000001',
+    name: 'Nasi Lemak Ayam',
+    description: 'Spiced chicken, sambal and fried egg',
+    brandId: BRAND_FOOD,
+    categoryId: CAT_NASI,
+    unitPriceSen: 1200,
+    imageUrl: '/products/nasi-lemak.svg',
+    soldOut: false,
+    modifierGroups: [SPICE_LEVEL, FOOD_ADD_ONS, FOOD_REMOVALS],
+  },
+  {
+    id: '20000000-0000-4000-8000-000000000002',
+    name: 'Nasi Goreng Kampung',
+    description: 'Anchovies, water spinach and hot chilli',
+    brandId: BRAND_FOOD,
+    categoryId: CAT_NASI,
+    unitPriceSen: 1000,
+    imageUrl: '/products/nasi-goreng.svg',
+    soldOut: false,
+    modifierGroups: [SPICE_LEVEL, FOOD_ADD_ONS],
+  },
+  {
+    id: '20000000-0000-4000-8000-000000000003',
+    name: 'Burger Ayam Special',
+    description: 'Chicken patty, egg and house sauce',
+    brandId: BRAND_FOOD,
+    categoryId: CAT_BURGER,
+    unitPriceSen: 1050,
+    imageUrl: '/products/burger.svg',
+    soldOut: false,
+    modifierGroups: [FOOD_ADD_ONS, FOOD_REMOVALS],
+  },
+  {
+    id: '20000000-0000-4000-8000-000000000004',
+    name: 'Roti John Daging',
+    description: 'Long roll with egg and minced beef',
+    brandId: BRAND_FOOD,
+    categoryId: CAT_BURGER,
+    unitPriceSen: 950,
+    imageUrl: '/products/roti-john.svg',
+    soldOut: false,
+    modifierGroups: [FOOD_REMOVALS],
+  },
+  {
+    id: '20000000-0000-4000-8000-000000000005',
+    name: 'Mee Goreng Mamak',
+    description: 'Spicy fried yellow noodles',
+    brandId: BRAND_FOOD,
+    categoryId: CAT_MEE,
+    unitPriceSen: 900,
+    imageUrl: '/products/mee-goreng.svg',
+    soldOut: false,
+    modifierGroups: [SPICE_LEVEL, FOOD_ADD_ONS],
+  },
+  {
+    id: '20000000-0000-4000-8000-000000000006',
+    name: 'Ayam Goreng Berempah',
+    description: 'Two pieces, crisp outside and tender inside',
+    brandId: BRAND_FOOD,
+    categoryId: CAT_SIDES,
+    unitPriceSen: 800,
+    imageUrl: '/products/ayam-goreng.svg',
+    soldOut: false,
+    modifierGroups: [],
+  },
+  {
+    id: '20000000-0000-4000-8000-000000000007',
+    name: 'Kentang Goreng',
+    description: 'Crisp and hot',
+    brandId: BRAND_FOOD,
+    categoryId: CAT_SIDES,
+    unitPriceSen: 600,
+    imageUrl: '/products/fries.svg',
+    soldOut: true,
+    modifierGroups: [],
+  },
+  {
+    id: '30000000-0000-4000-8000-000000000001',
+    name: 'Kopi Ais',
+    description: 'Iced white coffee',
+    brandId: BRAND_DRINKS,
+    categoryId: CAT_KOPI,
+    unitPriceSen: 550,
+    imageUrl: '/products/coffee.svg',
+    soldOut: false,
+    modifierGroups: [CUP_SIZE, DRINK_ADD_ONS, DRINK_REMOVALS],
+  },
+  {
+    id: '30000000-0000-4000-8000-000000000002',
+    name: 'Milo Ais Kaw',
+    description: 'Thick iced Milo',
+    brandId: BRAND_DRINKS,
+    categoryId: CAT_KOPI,
+    unitPriceSen: 600,
+    imageUrl: '/products/milo.svg',
+    soldOut: false,
+    modifierGroups: [CUP_SIZE, DRINK_REMOVALS],
+  },
+  {
+    id: '30000000-0000-4000-8000-000000000003',
+    name: 'Teh Limau Ais',
+    description: 'Fresh lime tea',
+    brandId: BRAND_DRINKS,
+    categoryId: CAT_TEH,
+    unitPriceSen: 450,
+    imageUrl: '/products/tea.svg',
+    soldOut: false,
+    modifierGroups: [DRINK_REMOVALS],
+  },
+  {
+    id: '30000000-0000-4000-8000-000000000004',
+    name: 'Teh O Ais Limau',
+    description: 'No milk, with lime',
+    brandId: BRAND_DRINKS,
+    categoryId: CAT_TEH,
+    unitPriceSen: 400,
+    imageUrl: '/products/teh-o.svg',
+    soldOut: false,
+    modifierGroups: [DRINK_REMOVALS],
+  },
+  {
+    id: '30000000-0000-4000-8000-000000000005',
+    name: 'Soda Laici',
+    description: 'Iced lychee soda',
+    brandId: BRAND_DRINKS,
+    categoryId: CAT_SEJUK,
+    unitPriceSen: 700,
+    imageUrl: '/products/soda.svg',
+    soldOut: false,
+    modifierGroups: [DRINK_REMOVALS],
+  },
+  {
+    id: '30000000-0000-4000-8000-000000000006',
+    name: 'Sirap Bandung',
+    description: 'Pink rose milk',
+    brandId: BRAND_DRINKS,
+    categoryId: CAT_SEJUK,
+    unitPriceSen: 500,
+    imageUrl: '/products/bandung.svg',
+    soldOut: false,
+    modifierGroups: [CUP_SIZE, DRINK_REMOVALS],
+  },
+  {
+    id: '30000000-0000-4000-8000-000000000007',
+    name: 'Air Kelapa Muda',
+    description: 'Fresh coconut, straight from the fruit',
+    brandId: BRAND_DRINKS,
+    categoryId: CAT_SEJUK,
+    unitPriceSen: 800,
+    imageUrl: '/products/kelapa.svg',
+    soldOut: true,
+    modifierGroups: [],
+  },
+]

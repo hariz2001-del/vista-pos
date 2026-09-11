@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title description">
+  <title id="title">Aina test cashier avatar</title>
+  <desc id="description">Illustrated cashier profile for the Vista local demo</desc>
+  <rect width="160" height="160" rx="80" fill="#d7f4ee"/>
+  <circle cx="80" cy="64" r="31" fill="#9a5e3f"/>
+  <path d="M47 64c0-31 16-48 35-48 22 0 38 19 38 49-9-4-15-11-19-21-12 13-30 20-54 20Z" fill="#111827"/>
+  <path d="M25 154c4-36 25-56 55-56s51 20 55 56" fill="#0f766e"/>
+  <path d="M63 70c4 5 10 8 17 8s13-3 17-8c-2 16-8 24-17 24s-15-8-17-24Z" fill="#fff" opacity=".9"/>
+  <circle cx="68" cy="60" r="3" fill="#111827"/>
+  <circle cx="92" cy="60" r="3" fill="#111827"/>
+</svg>

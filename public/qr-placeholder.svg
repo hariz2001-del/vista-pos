@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-labelledby="title desc">
+  <title id="title">DuitNow QR placeholder</title>
+  <desc id="desc">A non-scannable placeholder. Configure the real merchant QR before use.</desc>
+  <rect width="600" height="600" rx="36" fill="#fff"/>
+  <rect x="30" y="30" width="540" height="540" rx="28" fill="#f8fafc" stroke="#101826" stroke-width="12"/>
+  <g fill="#101826">
+    <path d="M82 82h150v150H82zm35 35v80h80v-80zM368 82h150v150H368zm35 35v80h80v-80zM82 368h150v150H82zm35 35v80h80v-80z"/>
+    <path d="M276 92h44v44h-44zm0 78h44v78h-44zm-12 118h54v54h-54zm92-28h52v52h-52zm84 14h72v48h-72zm-156 96h48v54h-48zm76-24h46v46h-46zm78 4h76v42h-76zm-168 112h54v54h-54zm88-42h54v92h-54zm88 18h68v74h-68z"/>
+  </g>
+  <rect x="62" y="250" width="476" height="104" rx="18" fill="#c2413a"/>
+  <text x="300" y="288" text-anchor="middle" fill="#fff" font-family="Arial, sans-serif" font-size="23" font-weight="700">QR BELUM DIKONFIGURASI</text>
+  <text x="300" y="322" text-anchor="middle" fill="#fff" font-family="Arial, sans-serif" font-size="18">Bukan untuk pembayaran</text>
+</svg>

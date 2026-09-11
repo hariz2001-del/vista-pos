@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #f4f1ea;
+  --color-ink: #101826;
+  --color-food: #ef6c35;
+  --color-food-soft: #fff0e8;
+  --color-drink: #087f8c;
+  --color-drink-soft: #e4f6f7;
+  --color-success: #15803d;
+  --color-danger: #c2413a;
+  --color-warning: #a16207;
+  --font-sans: "Segoe UI", Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  font-family: var(--font-sans);
+  color: #101826;
+  background: #f4f1ea;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+button,
+[role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid #0ea5e9;
+  outline-offset: 2px;
+}
+
+.scrollbar-subtle {
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-width: thin;
+}
+
+@media (display-mode: standalone) {
+  body {
+    overscroll-behavior: none;
+    user-select: none;
+  }
+
+  input {
+    user-select: text;
+  }
+}
