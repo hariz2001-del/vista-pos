@@ -1,5 +1,5 @@
 import { PRODUCTS } from '../data/fake-account'
-import type { FinalizeCheckoutRequest } from '../domain/types'
+import type { FinalizeCheckoutRequest, SaleCorrection } from '../domain/types'
 
 /**
  * Stands in for `api-vista` until it exists, so the UI can be built and driven
@@ -7,27 +7,38 @@ import type { FinalizeCheckoutRequest } from '../domain/types'
  * checkout must have, because designing the UI around them now is cheaper than
  * retrofitting it later:
  *
- *  1. Prices are recomputed from the catalogue; the client's totals are advisory.
+ *  1. Prices are recomputed from the catalogue. For an online sale that figure
+ *     is the price. For one rung up offline it is kept alongside what the
+ *     customer actually paid, which is what gets booked — the books have to
+ *     record money that moved.
  *  2. The queue number is allocated by the server, per business date, from #001.
  *  3. A replayed `client_txn_id` returns the original sale rather than making a
- *     second one — which is what makes offline replay safe.
+ *     second one — which is what makes offline replay safe. Corrections replay on
+ *     their own keys the same way.
  *
  * State lives in localStorage so a page reload does not reset the day.
  */
 
 const COUNTER_KEY = 'vista.fake-server.queue-counters'
 const SALES_KEY = 'vista.fake-server.sales'
+const CORRECTIONS_KEY = 'vista.fake-server.corrections'
 const LATENCY_MS = 450
 
 export type ServerSaleResponse = {
   order_id: string
   queue_number: string
+  /** What the customer paid. For an offline sale, the device's figure stands. */
   total_sen: number
+  /** What the same basket costs at today's menu prices. Equal to `total_sen` online. */
+  menu_price_sen: number
   item_count: number
   /** True when this request had already been recorded — the idempotent replay path. */
   replayed: boolean
-  /** Set when an offline sale arrived priced against a catalogue that has since changed. */
-  price_changed: boolean
+}
+
+export type ServerCorrectionResponse = {
+  correction_id: string
+  replayed: boolean
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -56,35 +67,40 @@ function allocateQueueNumber(businessDate: string): string {
   return `#${next.toString().padStart(3, '0')}`
 }
 
-/** Recompute the payable total from the catalogue, ignoring what the client claimed. */
-function repriceFromCatalogue(request: FinalizeCheckoutRequest): {
-  totalSen: number
+/**
+ * Total the request twice: once at the prices the device charged, once at today's
+ * catalogue prices.
+ *
+ * Both figures are kept. The charged one is what the customer paid and what the
+ * books record; the menu one makes a divergence visible in a report instead of
+ * being silently trusted or silently thrown away.
+ */
+function priceBothWays(request: FinalizeCheckoutRequest): {
+  chargedSen: number
+  menuSen: number
   itemCount: number
-  priceChanged: boolean
 } {
-  let grossSen = 0
+  let chargedGrossSen = 0
+  let menuGrossSen = 0
   let lineDiscountSen = 0
   let itemCount = 0
-  let priceChanged = false
 
   for (const item of request.cart_items) {
     const product = PRODUCTS.find((candidate) => candidate.id === item.product_id)
-    const unitPriceSen = product?.unitPriceSen ?? item.unit_price_sen
-    if (product && product.unitPriceSen !== item.unit_price_sen) priceChanged = true
+    const menuUnitPriceSen = product?.unitPriceSen ?? item.unit_price_sen
 
-    grossSen += (unitPriceSen + item.modifier_total_sen) * item.quantity
+    chargedGrossSen += (item.unit_price_sen + item.modifier_total_sen) * item.quantity
+    menuGrossSen += (menuUnitPriceSen + item.modifier_total_sen) * item.quantity
     lineDiscountSen += item.discount_sen
     itemCount += item.quantity
   }
 
-  const afterLineDiscounts = Math.max(0, grossSen - lineDiscountSen)
-  const cartDiscountSen = Math.min(request.cart_discount_sen, afterLineDiscounts)
-
-  return {
-    totalSen: afterLineDiscounts - cartDiscountSen,
-    itemCount,
-    priceChanged,
+  const total = (grossSen: number) => {
+    const afterLineDiscounts = Math.max(0, grossSen - lineDiscountSen)
+    return afterLineDiscounts - Math.min(request.cart_discount_sen, afterLineDiscounts)
   }
+
+  return { chargedSen: total(chargedGrossSen), menuSen: total(menuGrossSen), itemCount }
 }
 
 export async function serverFinalizeCheckout(
@@ -98,18 +114,44 @@ export async function serverFinalizeCheckout(
     return { ...existing, replayed: true }
   }
 
-  const { totalSen, itemCount, priceChanged } = repriceFromCatalogue(request)
+  const { chargedSen, menuSen, itemCount } = priceBothWays(request)
   const response: ServerSaleResponse = {
     order_id: crypto.randomUUID(),
     queue_number: allocateQueueNumber(request.business_date),
-    total_sen: totalSen,
+    total_sen: chargedSen,
+    menu_price_sen: menuSen,
     item_count: itemCount,
     replayed: false,
-    price_changed: priceChanged,
   }
 
   sales[request.client_txn_id] = response
   writeJson(SALES_KEY, sales)
+
+  return response
+}
+
+/**
+ * Accept a contra-entry against an already-paid sale.
+ *
+ * The original sale is not touched: it is a historical fact and editing it would
+ * destroy the audit trail. The correction is its own record, idempotent on its
+ * own key, so a retry after a dropped connection cannot refund twice.
+ */
+export async function serverSubmitCorrection(
+  correction: SaleCorrection,
+): Promise<ServerCorrectionResponse> {
+  await new Promise((resolve) => window.setTimeout(resolve, LATENCY_MS))
+
+  const stored = readJson<Record<string, ServerCorrectionResponse>>(CORRECTIONS_KEY, {})
+  const existing = stored[correction.clientTxnId]
+  if (existing) return { ...existing, replayed: true }
+
+  const response: ServerCorrectionResponse = {
+    correction_id: crypto.randomUUID(),
+    replayed: false,
+  }
+  stored[correction.clientTxnId] = response
+  writeJson(CORRECTIONS_KEY, stored)
 
   return response
 }
@@ -119,6 +161,7 @@ export function resetFakeServer(): void {
   try {
     localStorage.removeItem(COUNTER_KEY)
     localStorage.removeItem(SALES_KEY)
+    localStorage.removeItem(CORRECTIONS_KEY)
   } catch {
     // Nothing to do — the demo simply keeps its previous numbers.
   }

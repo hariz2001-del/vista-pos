@@ -1,14 +1,15 @@
-import { AlertTriangle, ArrowLeft, CloudOff, Flag } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CloudOff, Undo2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { PinPad } from '../components/PinPad'
 import { formatBusinessDate } from '../domain/business-date'
 import { formatRinggit, formatSignedRinggit, parseRinggitToSen } from '../domain/money'
-import type { Cashier, CompletedSale } from '../domain/types'
+import type { Cashier, CompletedSale, SaleCorrection } from '../domain/types'
 
 type Props = {
   cashier: Cashier
   businessDate: string
   sales: CompletedSale[]
+  corrections: SaleCorrection[]
   pendingCount: number
   onBack: () => void
   onShiftClosed: (declaredSen: number, gapSen: number) => void
@@ -18,6 +19,7 @@ export function ShiftCloseScreen({
   cashier,
   businessDate,
   sales,
+  corrections,
   pendingCount,
   onBack,
   onShiftClosed,
@@ -25,14 +27,33 @@ export function ShiftCloseScreen({
   const [declaredInput, setDeclaredInput] = useState('')
 
   const summary = useMemo(() => {
-    let expectedSen = 0
-    let flagged = 0
-    for (const sale of sales) {
-      expectedSen += sale.totalSen
-      if (sale.flaggedForOwner) flagged += 1
+    const salesSen = sales.reduce((sum, sale) => sum + sale.totalSen, 0)
+
+    /*
+     * Corrections only count towards the bank's QR figure in one direction.
+     *
+     * An exchange that collects more money is collected the same way the sale
+     * was — the customer scans the counter QR — so it lands in the same incoming
+     * total. A refund goes back out by transfer, on a different rail, and never
+     * reduces what the QR received. Netting refunds off here would make the bank
+     * look short by exactly the refund, every single time.
+     */
+    let collectedSen = 0
+    let refundedSen = 0
+    for (const correction of corrections) {
+      if (correction.deltaSen > 0) collectedSen += correction.deltaSen
+      else refundedSen -= correction.deltaSen
     }
-    return { expectedSen, flagged, orderCount: sales.length }
-  }, [sales])
+
+    return {
+      salesSen,
+      collectedSen,
+      refundedSen,
+      expectedSen: salesSen + collectedSen,
+      correctionCount: corrections.length,
+      orderCount: sales.length,
+    }
+  }, [sales, corrections])
 
   const declaredSen = parseRinggitToSen(declaredInput)
   const gapSen = declaredSen === null ? null : declaredSen - summary.expectedSen
@@ -66,17 +87,32 @@ export function ShiftCloseScreen({
               <p className="mt-1 text-3xl font-black text-ink">{summary.orderCount}</p>
             </div>
             <div className="rounded-2xl bg-white p-4 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">QR sales</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                QR received
+              </p>
               <p className="mt-1 text-3xl font-black text-ink">
                 {formatRinggit(summary.expectedSen)}
               </p>
+              {summary.collectedSen > 0 ? (
+                <p className="mt-1 text-xs font-bold text-slate-500">
+                  includes {formatRinggit(summary.collectedSen)} collected on an exchange
+                </p>
+              ) : null}
             </div>
           </div>
 
-          {summary.flagged > 0 ? (
-            <p className="mt-3 flex items-center gap-2 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-900">
-              <Flag aria-hidden="true" className="size-4 shrink-0" />
-              {summary.flagged} sale{summary.flagged === 1 ? '' : 's'} flagged for owner review.
+          {summary.correctionCount > 0 ? (
+            <p className="mt-3 flex items-start gap-2 rounded-2xl bg-slate-100 p-3 text-sm font-bold text-slate-600">
+              <Undo2 aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+              <span>
+                {summary.correctionCount} correction
+                {summary.correctionCount === 1 ? '' : 's'} this shift.
+                {summary.refundedSen > 0
+                  ? ` ${formatRinggit(summary.refundedSen)} was refunded by transfer, so it is not
+                      deducted from the QR figure above.`
+                  : ''}{' '}
+                Nothing is waiting on the owner.
+              </span>
             </p>
           ) : null}
 
@@ -123,13 +159,13 @@ export function ShiftCloseScreen({
               </div>
               <h2 className="mt-4 text-xl font-black text-ink">Cannot close yet</h2>
               <p className="mt-2 max-w-xs text-sm font-semibold text-slate-600">
-                {pendingCount} offline sale{pendingCount === 1 ? '' : 's'} still {pendingCount === 1 ? 'has' : 'have'}{' '}
-                not reached the server. Reconnect and wait for the sync to finish before closing
-                the shift.
+                {pendingCount} offline record{pendingCount === 1 ? '' : 's'} still{' '}
+                {pendingCount === 1 ? 'has' : 'have'} not reached the server. Reconnect and wait
+                for the sync to finish before closing the shift.
               </p>
               <p className="mt-4 flex items-center justify-center gap-2 text-xs font-bold text-amber-900">
                 <AlertTriangle aria-hidden="true" className="size-4" />
-                Closing now would drop those sales from today's totals.
+                Closing now would leave the shift's financial record incomplete.
               </p>
             </div>
           ) : (

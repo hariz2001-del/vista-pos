@@ -9,29 +9,48 @@ import { TopBar } from './components/TopBar'
 import { FAKE_ACCOUNT } from './data/fake-account'
 import { getBusinessDate } from './domain/business-date'
 import { calculateCartTotals } from './domain/cart'
+import {
+  cartLinesFromRequest,
+  requestAfterCorrections,
+  type ExchangePlan,
+} from './domain/corrections'
 import type {
   CartLine,
   CompletedSale,
   Product,
+  SaleCorrection,
   Shift,
   SnapshottedModifier,
 } from './domain/types'
 import { useDisplayMode } from './hooks/useDisplayMode'
 import { useNetworkStatus } from './hooks/useNetworkStatus'
 import {
+  cancelSale,
   createCheckoutRequest,
+  exchangeSale,
   finalizeCheckout,
-  flagSaleForOwner,
   mintClientTxnId,
+  syncPendingCorrections,
   syncPendingSales,
 } from './lib/api'
-import { countPendingSales, listSalesForShift } from './lib/offline-queue'
+import {
+  countPendingRecords,
+  listCorrectionsForShift,
+  listSalesForShift,
+} from './lib/offline-queue'
+import { EditOrderScreen } from './screens/EditOrderScreen'
 import { RecentSalesScreen } from './screens/RecentSalesScreen'
 import { ShiftCloseScreen } from './screens/ShiftCloseScreen'
 import { ShiftOpenScreen } from './screens/ShiftOpenScreen'
 import { SignInScreen } from './screens/SignInScreen'
 
-type Screen = 'SIGN_IN' | 'SHIFT_OPEN' | 'REGISTER' | 'RECENT_SALES' | 'SHIFT_CLOSE'
+type Screen =
+  | 'SIGN_IN'
+  | 'SHIFT_OPEN'
+  | 'REGISTER'
+  | 'RECENT_SALES'
+  | 'EDIT_ORDER'
+  | 'SHIFT_CLOSE'
 
 function App() {
   const account = FAKE_ACCOUNT
@@ -61,8 +80,11 @@ function App() {
   const [paidSale, setPaidSale] = useState<CompletedSale | null>(null)
 
   const [sales, setSales] = useState<CompletedSale[]>([])
-  // Counted across every shift, not just this one: any sale still sitting on the
-  // device is a reason to refuse a shift close.
+  const [corrections, setCorrections] = useState<SaleCorrection[]>([])
+  /** The sale being amended, while the edit screen is open. */
+  const [editing, setEditing] = useState<CompletedSale | null>(null)
+  // Counted across every shift, and across corrections as well as sales: anything
+  // still sitting on the device is a reason to refuse a shift close.
   const [pendingCount, setPendingCount] = useState(0)
   const isSyncingRef = useRef(false)
 
@@ -94,13 +116,23 @@ function App() {
   }, [account.products, brandId, categoryId, search])
 
   const totals = calculateCartTotals(cart, cartDiscountSen)
+  const editingRequest = editing
+    ? requestAfterCorrections(
+        editing.request,
+        corrections.filter(
+          (correction) => correction.originalClientTxnId === editing.clientTxnId,
+        ),
+      )
+    : null
 
   const refreshSales = useCallback(async (shiftId: string) => {
-    const [shiftSales, pending] = await Promise.all([
+    const [shiftSales, shiftCorrections, pending] = await Promise.all([
       listSalesForShift(shiftId),
-      countPendingSales(),
+      listCorrectionsForShift(shiftId),
+      countPendingRecords(),
     ])
     setSales(shiftSales)
+    setCorrections(shiftCorrections)
     setPendingCount(pending)
   }, [])
 
@@ -119,7 +151,11 @@ function App() {
     if (!shift || !isOnline || pendingCount === 0 || isSyncingRef.current) return
 
     isSyncingRef.current = true
+    // Sales first, then corrections: a correction refers to a sale, so replaying
+    // it before its sale has arrived would reference something the server has
+    // never seen.
     void syncPendingSales()
+      .then(() => syncPendingCorrections())
       .then(() => refreshSales(shift.id))
       .finally(() => {
         isSyncingRef.current = false
@@ -260,13 +296,28 @@ function App() {
   function closeShift() {
     startNextOrder()
     setSales([])
+    setCorrections([])
     setPendingCount(0)
     setShift(null)
     setScreen('SHIFT_OPEN')
   }
 
-  async function handleFlagSale(sale: CompletedSale, reason: string) {
-    await flagSaleForOwner(sale, reason)
+  /**
+   * Reverse a paid sale. Immediate, with no owner in the loop: the cashier is
+   * standing in front of the customer and the contra-entry is the record.
+   */
+  async function handleCancelSale(sale: CompletedSale, reason: string) {
+    const prior = corrections.filter(
+      (correction) => correction.originalClientTxnId === sale.clientTxnId,
+    )
+    await cancelSale(sale, prior, reason, (id) => brandsById.get(id)?.name ?? '—', isOnline)
+    if (shift) await refreshSales(shift.id)
+  }
+
+  async function handleExchange(sale: CompletedSale, plan: ExchangePlan, reason: string) {
+    await exchangeSale(sale, plan, reason, isOnline)
+    setEditing(null)
+    setScreen('RECENT_SALES')
     if (shift) await refreshSales(shift.id)
   }
 
@@ -297,8 +348,32 @@ function App() {
       <RecentSalesScreen
         businessDate={shift.businessDate}
         sales={sales}
+        corrections={corrections}
         onBack={() => setScreen('REGISTER')}
-        onFlag={(sale, reason) => void handleFlagSale(sale, reason)}
+        onCancelSale={(sale, reason) => void handleCancelSale(sale, reason)}
+        onEditSale={(sale) => {
+          setEditing(sale)
+          setScreen('EDIT_ORDER')
+        }}
+      />
+    )
+  }
+
+  if (screen === 'EDIT_ORDER' && editing && editingRequest) {
+    return (
+      <EditOrderScreen
+        sale={editing}
+        baselineRequest={editingRequest}
+        initialCart={cartLinesFromRequest(editingRequest, account.brands, account.categories)}
+        initialCartDiscountSen={editingRequest.cart_discount_sen}
+        brands={account.brands}
+        categories={account.categories}
+        products={account.products}
+        onBack={() => {
+          setEditing(null)
+          setScreen('RECENT_SALES')
+        }}
+        onCommit={(plan, reason) => void handleExchange(editing, plan, reason)}
       />
     )
   }
@@ -309,6 +384,7 @@ function App() {
         cashier={account.cashier}
         businessDate={shift.businessDate}
         sales={sales}
+        corrections={corrections}
         pendingCount={pendingCount}
         onBack={() => setScreen('REGISTER')}
         onShiftClosed={closeShift}

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import type { CartLine } from '../domain/types'
-import { CheckoutApiError, createCheckoutRequest } from './api'
+import type { CartLine, SaleCorrection } from '../domain/types'
+import {
+  CheckoutApiError,
+  createCheckoutRequest,
+  toCheckoutApiPayload,
+  toCorrectionApiPayload,
+} from './api'
 
 const BASE: CartLine = {
   cartLineId: 'line-1',
@@ -43,8 +48,8 @@ describe('checkout request', () => {
           modifier_total_sen: 200,
           discount_sen: 0,
           modifiers: [
-            { name: 'Extra Sambal', price_sen: 200, type: 'ADD_ON' },
-            { name: 'No Timun', price_sen: 0, type: 'REMOVAL' },
+            { modifier_id: 'm1', name: 'Extra Sambal', price_sen: 200, type: 'ADD_ON' },
+            { modifier_id: 'm2', name: 'No Timun', price_sen: 0, type: 'REMOVAL' },
           ],
         },
       ],
@@ -90,5 +95,61 @@ describe('checkout request', () => {
     expect(() =>
       createCheckoutRequest({ ...ENVELOPE, cart: [BASE], cartDiscountSen: 99999 }),
     ).toThrow(CheckoutApiError)
+  })
+
+  it('maps an offline sale to the production API without trusting display labels', () => {
+    const request = createCheckoutRequest({ ...ENVELOPE, cart: [BASE], cartDiscountSen: 100 })
+    expect(toCheckoutApiPayload(request, 1300, 'OFFLINE_SYNC', '#OFF-02')).toMatchObject({
+      claimed_total_sen: 1300,
+      origin: 'OFFLINE_SYNC',
+      offline_label: '#OFF-02',
+      cart_items: [
+        {
+          product_id: 'product-1',
+          charged_unit_price_sen: 1200,
+          charged_modifier_total_sen: 200,
+          modifiers: [{ modifier_id: 'm1' }, { modifier_id: 'm2' }],
+        },
+      ],
+    })
+  })
+
+  it('maps a queued correction to the production idempotent endpoint', () => {
+    const replacement = createCheckoutRequest({
+      ...ENVELOPE,
+      cart: [BASE],
+      cartDiscountSen: 100,
+    })
+    const correction: SaleCorrection = {
+      clientTxnId: 'correction-txn',
+      correctionId: null,
+      originalClientTxnId: 'sale-txn',
+      originalQueueLabel: '#014',
+      kind: 'EXCHANGE',
+      reason: 'Discount missed at checkout',
+      deltaSen: -100,
+      brandDeltas: [{ brandId: 'brand-food', brandName: 'Food', deltaSen: -100 }],
+      replacementItems: replacement.cart_items,
+      replacementCartDiscountSen: 100,
+      shiftId: 'shift-id',
+      businessDate: '2026-09-07',
+      createdAt: '2026-09-07T12:00:00.000Z',
+      syncStatus: 'PENDING',
+    }
+
+    expect(toCorrectionApiPayload(correction, 'OFFLINE_SYNC')).toMatchObject({
+      client_txn_id: 'correction-txn',
+      original_client_txn_id: 'sale-txn',
+      claimed_delta_sen: -100,
+      replacement_cart_discount_sen: 100,
+      replacement_items: [
+        {
+          product_id: 'product-1',
+          charged_unit_price_sen: 1200,
+          charged_modifier_total_sen: 200,
+          modifiers: [{ modifier_id: 'm1' }, { modifier_id: 'm2' }],
+        },
+      ],
+    })
   })
 })
