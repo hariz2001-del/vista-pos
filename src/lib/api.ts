@@ -551,4 +551,16 @@ export async function closeShiftOnServer(
   })
 }
 
+/**
+ * Tell the server this tablet is alive, and how many flushes in a row have
+ * failed. It is the only way the owner's banner can tell a quiet counter from a
+ * disconnected one: the server cannot see a tablet that has stopped calling.
+ */
+export async function sendHeartbeat(consecutiveSyncFailures: number): Promise<void> {
+  if (IS_DEMO) return
+  await apiRequest('POST', '/terminal/heartbeat', {
+    consecutive_sync_failures: consecutiveSyncFailures,
+  })
+}
+
 export { planExchange }

@@ -34,6 +34,7 @@ import {
   IS_DEMO,
   mintClientTxnId,
   openShiftOnServer,
+  sendHeartbeat,
   syncPendingCorrections,
   syncPendingSales,
 } from './lib/api'
@@ -61,6 +62,8 @@ type Screen =
 
 /** How often queued records are retried while the tablet believes it is online. */
 const SYNC_RETRY_MS = 30_000
+/** How often an open counter tells the server it is alive. */
+const HEARTBEAT_MS = 60_000
 
 /**
  * What a failed shift open or close shows on the PIN pad. A wrong PIN is the only
@@ -122,6 +125,9 @@ function App() {
   // still sitting on the device is a reason to refuse a shift close.
   const [pendingCount, setPendingCount] = useState(0)
   const [syncTick, setSyncTick] = useState(0)
+  /** Flush attempts in a row that failed to send something. Reported in the heartbeat. */
+  const [syncFailures, setSyncFailures] = useState(0)
+  const syncFailuresRef = useRef(0)
   const isSyncingRef = useRef(false)
 
   const brandsById = useMemo(
@@ -222,12 +228,34 @@ function App() {
     // it before its sale has arrived would reference something the server has
     // never seen.
     void syncPendingSales()
-      .then(() => syncPendingCorrections())
+      .then(async (salesOutcome) => {
+        const correctionsOutcome = await syncPendingCorrections()
+        const failed = salesOutcome.failedCount + correctionsOutcome.failedCount
+        setSyncFailures((current) => (failed > 0 ? current + 1 : 0))
+      })
       .then(() => refreshSales(shift.id))
       .finally(() => {
         isSyncingRef.current = false
       })
   }, [isOnline, pendingCount, shift, refreshSales, sessionExpired, syncTick])
+
+  // Kept in a ref so a change in the count does not restart the heartbeat timer.
+  useEffect(() => {
+    syncFailuresRef.current = syncFailures
+  }, [syncFailures])
+
+  // Tell the server this counter is alive, so the owner's banner can tell a quiet
+  // shift from a tablet that has dropped off. Sent on open, on reconnect, and
+  // every minute. It stops while offline — which is exactly what the banner reads.
+  useEffect(() => {
+    if (!shift || IS_DEMO || sessionExpired || !isOnline) return
+    const beat = () => {
+      sendHeartbeat(syncFailuresRef.current).catch(() => {})
+    }
+    beat()
+    const timer = window.setInterval(beat, HEARTBEAT_MS)
+    return () => window.clearInterval(timer)
+  }, [shift, sessionExpired, isOnline])
 
   // A server that is down while the tablet thinks it is online changes nothing
   // that would re-run the flush above, so queued records are retried on a timer.

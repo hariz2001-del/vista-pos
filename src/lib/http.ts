@@ -94,7 +94,8 @@ export async function apiRequest<T>(
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      // Only present when there is one: a GET must not carry a body at all.
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: controller.signal,
     })
   } catch {
