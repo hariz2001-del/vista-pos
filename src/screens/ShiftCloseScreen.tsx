@@ -1,8 +1,8 @@
 import { AlertTriangle, ArrowLeft, CloudOff, Undo2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { PinPad } from '../components/PinPad'
 import { formatBusinessDate } from '../domain/business-date'
-import { formatRinggit, formatSignedRinggit, parseRinggitToSen } from '../domain/money'
+import { formatRinggit, formatSignedRinggit } from '../domain/money'
 import type { Cashier, CompletedSale, SaleCorrection } from '../domain/types'
 
 type Props = {
@@ -12,9 +12,20 @@ type Props = {
   corrections: SaleCorrection[]
   pendingCount: number
   onBack: () => void
-  onShiftClosed: (declaredSen: number, gapSen: number) => void
+  onShiftClosed: () => void
 }
 
+/**
+ * Close the shift with the PIN and nothing else.
+ *
+ * The cashier is not asked what the bank received. They cannot see the account,
+ * and a figure typed in at the end of a night is a guess that then has to be
+ * argued with. The server records its own total; checking it against the bank
+ * is the owner's job in the RMS.
+ *
+ * The one thing that still blocks a close is money that has not reached the
+ * server yet — closing over it would leave the shift's record incomplete.
+ */
 export function ShiftCloseScreen({
   cashier,
   businessDate,
@@ -24,39 +35,19 @@ export function ShiftCloseScreen({
   onBack,
   onShiftClosed,
 }: Props) {
-  const [declaredInput, setDeclaredInput] = useState('')
-
   const summary = useMemo(() => {
     const salesSen = sales.reduce((sum, sale) => sum + sale.totalSen, 0)
-
-    /*
-     * Corrections only count towards the bank's QR figure in one direction.
-     *
-     * An exchange that collects more money is collected the same way the sale
-     * was — the customer scans the counter QR — so it lands in the same incoming
-     * total. A refund goes back out by transfer, on a different rail, and never
-     * reduces what the QR received. Netting refunds off here would make the bank
-     * look short by exactly the refund, every single time.
-     */
-    let collectedSen = 0
-    let refundedSen = 0
-    for (const correction of corrections) {
-      if (correction.deltaSen > 0) collectedSen += correction.deltaSen
-      else refundedSen -= correction.deltaSen
-    }
-
+    const correctionSen = corrections.reduce((sum, correction) => sum + correction.deltaSen, 0)
     return {
       salesSen,
-      collectedSen,
-      refundedSen,
-      expectedSen: salesSen + collectedSen,
+      correctionSen,
+      // Matches what the server records at close: revenue less refunds.
+      takingsSen: salesSen + correctionSen,
       correctionCount: corrections.length,
       orderCount: sales.length,
     }
   }, [sales, corrections])
 
-  const declaredSen = parseRinggitToSen(declaredInput)
-  const gapSen = declaredSen === null ? null : declaredSen - summary.expectedSen
   const isBlocked = pendingCount > 0
 
   return (
@@ -78,7 +69,7 @@ export function ShiftCloseScreen({
         <section>
           <h1 className="text-2xl font-black text-ink sm:text-3xl">Close Shift</h1>
           <p className="mt-1 text-sm font-semibold text-slate-500">
-            Compare the QR total received by the bank against the sales recorded here.
+            Enter the PIN to finish. Nothing needs to be counted or typed in.
           </p>
 
           <div className="mt-5 grid grid-cols-2 gap-3">
@@ -87,17 +78,10 @@ export function ShiftCloseScreen({
               <p className="mt-1 text-3xl font-black text-ink">{summary.orderCount}</p>
             </div>
             <div className="rounded-2xl bg-white p-4 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                QR received
-              </p>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Takings</p>
               <p className="mt-1 text-3xl font-black text-ink">
-                {formatRinggit(summary.expectedSen)}
+                {formatRinggit(summary.takingsSen)}
               </p>
-              {summary.collectedSen > 0 ? (
-                <p className="mt-1 text-xs font-bold text-slate-500">
-                  includes {formatRinggit(summary.collectedSen)} collected on an exchange
-                </p>
-              ) : null}
             </div>
           </div>
 
@@ -106,48 +90,10 @@ export function ShiftCloseScreen({
               <Undo2 aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
               <span>
                 {summary.correctionCount} correction
-                {summary.correctionCount === 1 ? '' : 's'} this shift.
-                {summary.refundedSen > 0
-                  ? ` ${formatRinggit(summary.refundedSen)} was refunded by transfer, so it is not
-                      deducted from the QR figure above.`
-                  : ''}{' '}
-                Nothing is waiting on the owner.
+                {summary.correctionCount === 1 ? '' : 's'} this shift, worth{' '}
+                {formatSignedRinggit(summary.correctionSen)} — already counted in the takings.
               </span>
             </p>
-          ) : null}
-
-          <label className="mt-6 block text-sm font-black text-ink" htmlFor="declared">
-            QR total according to the bank
-          </label>
-          <input
-            id="declared"
-            inputMode="decimal"
-            placeholder="RM 0.00"
-            value={declaredInput}
-            onChange={(event) => setDeclaredInput(event.target.value)}
-            className="mt-2 min-h-16 w-full rounded-2xl border-2 border-slate-200 px-4 text-2xl font-black focus:border-ink"
-          />
-
-          {declaredInput !== '' && declaredSen === null ? (
-            <p className="mt-2 text-sm font-bold text-danger" role="alert">
-              Enter a valid amount, for example 152.40
-            </p>
-          ) : null}
-
-          {gapSen !== null ? (
-            <div
-              className={`mt-3 rounded-2xl p-4 ${
-                gapSen === 0 ? 'bg-green-50 text-success' : 'bg-amber-50 text-amber-900'
-              }`}
-            >
-              <p className="text-xs font-bold uppercase tracking-wider">Difference</p>
-              <p className="mt-1 text-2xl font-black">{formatSignedRinggit(gapSen)}</p>
-              <p className="mt-1 text-xs font-semibold">
-                {gapSen === 0
-                  ? 'Matches exactly.'
-                  : 'Recorded as an Unidentified Bucket entry, not discarded.'}
-              </p>
-            </div>
           ) : null}
         </section>
 
@@ -174,7 +120,7 @@ export function ShiftCloseScreen({
               subtitle="Enter the counter PIN"
               expectedPin={cashier.pin}
               confirmLabel="4-digit PIN"
-              onSuccess={() => onShiftClosed(declaredSen ?? 0, gapSen ?? 0)}
+              onSuccess={onShiftClosed}
             />
           )}
         </section>
