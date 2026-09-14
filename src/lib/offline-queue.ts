@@ -124,6 +124,14 @@ export function saveCorrection(correction: SaleCorrection): Promise<IDBValidKey>
   return runTransaction('readwrite', (store) => store.put(correction), CORRECTIONS)
 }
 
+/**
+ * Remove a correction the server definitively refused (a 4xx answer). A
+ * correction that merely failed to send is never removed — it stays queued.
+ */
+export function deleteCorrection(clientTxnId: string): Promise<undefined> {
+  return runTransaction('readwrite', (store) => store.delete(clientTxnId), CORRECTIONS)
+}
+
 async function allCorrections(): Promise<SaleCorrection[]> {
   return runTransaction<SaleCorrection[]>('readonly', (store) => store.getAll(), CORRECTIONS)
 }

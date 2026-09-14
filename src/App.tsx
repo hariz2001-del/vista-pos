@@ -4,9 +4,10 @@ import { DiscountModal, type DiscountTarget } from './components/DiscountModal'
 import { FilterBar } from './components/FilterBar'
 import { ModifierModal } from './components/ModifierModal'
 import { OrderPanel, type OrderPanelMode } from './components/OrderPanel'
+import type { PinVerdict } from './components/PinPad'
 import { ProductGrid } from './components/ProductGrid'
 import { TopBar } from './components/TopBar'
-import { FAKE_ACCOUNT } from './data/fake-account'
+import { FAKE_ACCOUNT, FAKE_LOGIN, type AccountSnapshot } from './data/fake-account'
 import { getBusinessDate } from './domain/business-date'
 import { calculateCartTotals } from './domain/cart'
 import {
@@ -26,18 +27,24 @@ import { useDisplayMode } from './hooks/useDisplayMode'
 import { useNetworkStatus } from './hooks/useNetworkStatus'
 import {
   cancelSale,
+  closeShiftOnServer,
   createCheckoutRequest,
   exchangeSale,
   finalizeCheckout,
+  IS_DEMO,
   mintClientTxnId,
+  openShiftOnServer,
   syncPendingCorrections,
   syncPendingSales,
 } from './lib/api'
+import { cachedBootstrap, EMPTY_SNAPSHOT, loadBootstrap, type Bootstrap } from './lib/bootstrap'
+import { ApiError, onSessionExpired, SessionExpiredError } from './lib/http'
 import {
   countPendingRecords,
   listCorrectionsForShift,
   listSalesForShift,
 } from './lib/offline-queue'
+import { hasSession, signIn, signOut } from './lib/session'
 import { EditOrderScreen } from './screens/EditOrderScreen'
 import { RecentSalesScreen } from './screens/RecentSalesScreen'
 import { ShiftCloseScreen } from './screens/ShiftCloseScreen'
@@ -52,15 +59,41 @@ type Screen =
   | 'EDIT_ORDER'
   | 'SHIFT_CLOSE'
 
+/** How often queued records are retried while the tablet believes it is online. */
+const SYNC_RETRY_MS = 30_000
+
+/**
+ * What a failed shift open or close shows on the PIN pad. A wrong PIN is the only
+ * case that reads as "wrong"; everything else says what actually happened.
+ */
+function pinVerdictFor(error: unknown): PinVerdict {
+  if (error instanceof ApiError) {
+    return error.code === 'auth:INVALID_PIN' ? { ok: false } : { ok: false, message: error.message }
+  }
+  if (error instanceof SessionExpiredError) return { ok: false, message: error.message }
+  return { ok: false, message: 'No connection to the server. Opening or closing a shift needs one.' }
+}
+
+/** Demo runs on the built-in account; otherwise the last menu this device saw, if any. */
+function initialSnapshot(): AccountSnapshot | null {
+  if (IS_DEMO) return FAKE_ACCOUNT
+  return cachedBootstrap()?.snapshot ?? null
+}
+
 function App() {
-  const account = FAKE_ACCOUNT
+  const [snapshot, setSnapshot] = useState<AccountSnapshot | null>(initialSnapshot)
+  const account = snapshot ?? EMPTY_SNAPSHOT
   const networkOnline = useNetworkStatus()
   const [isSimulatedOffline, setIsSimulatedOffline] = useState(false)
   const isOnline = networkOnline && !isSimulatedOffline
   const displayMode = useDisplayMode()
 
-  const [screen, setScreen] = useState<Screen>('SIGN_IN')
+  const [screen, setScreen] = useState<Screen>(() =>
+    !IS_DEMO && hasSession() ? 'SHIFT_OPEN' : 'SIGN_IN',
+  )
   const [shift, setShift] = useState<Shift | null>(null)
+  /** The server rejected the token mid-shift. Sales keep queuing until sign-in. */
+  const [sessionExpired, setSessionExpired] = useState(false)
 
   const [brandId, setBrandId] = useState<string | null>(null)
   const [categoryId, setCategoryId] = useState<string | null>(null)
@@ -81,11 +114,14 @@ function App() {
 
   const [sales, setSales] = useState<CompletedSale[]>([])
   const [corrections, setCorrections] = useState<SaleCorrection[]>([])
+  /** Why the last cancel or exchange was refused by the server, if it was. */
+  const [correctionError, setCorrectionError] = useState<string | null>(null)
   /** The sale being amended, while the edit screen is open. */
   const [editing, setEditing] = useState<CompletedSale | null>(null)
   // Counted across every shift, and across corrections as well as sales: anything
   // still sitting on the device is a reason to refuse a shift close.
   const [pendingCount, setPendingCount] = useState(0)
+  const [syncTick, setSyncTick] = useState(0)
   const isSyncingRef = useRef(false)
 
   const brandsById = useMemo(
@@ -136,6 +172,37 @@ function App() {
     setPendingCount(pending)
   }, [])
 
+  /**
+   * Take in a fresh bootstrap. A shift already open on the server means this
+   * tablet reloaded or signed in again mid-shift — resume it rather than asking
+   * for a second one, which the server would refuse anyway.
+   */
+  const applyBootstrap = useCallback((result: Bootstrap) => {
+    setSnapshot(result.snapshot)
+    const open = result.openShift
+    if (!open) return
+    setShift({
+      id: open.id,
+      businessDate: open.businessDate,
+      openedAt: open.openedAt,
+      openedByCashierId: result.snapshot.cashier.id,
+    })
+    setScreen((current) => (current === 'SIGN_IN' || current === 'SHIFT_OPEN' ? 'REGISTER' : current))
+  }, [])
+
+  // On start: refresh the menu and pick up any open shift. Offline, the cached
+  // menu stays; a rejected token goes back to the sign-in screen.
+  useEffect(() => {
+    if (IS_DEMO || !hasSession()) return
+    loadBootstrap()
+      .then(applyBootstrap)
+      .catch((error: unknown) => {
+        if (error instanceof SessionExpiredError) setScreen('SIGN_IN')
+      })
+  }, [applyBootstrap])
+
+  useEffect(() => onSessionExpired(() => setSessionExpired(true)), [])
+
   // Load this shift's sales once it is open. IndexedDB is an external system, so
   // this belongs in an effect; `refreshSales` awaits before setting state, so the
   // linter's synchronous-setState concern does not apply here.
@@ -145,10 +212,10 @@ function App() {
     void refreshSales(shift.id)
   }, [shift, refreshSales])
 
-  // Flush the local queue whenever connectivity returns. Guarded by a ref so the
-  // state update this causes cannot re-enter the sync.
+  // Flush the local queue whenever connectivity returns, and on each retry tick.
+  // Guarded by a ref so the state update this causes cannot re-enter the sync.
   useEffect(() => {
-    if (!shift || !isOnline || pendingCount === 0 || isSyncingRef.current) return
+    if (!shift || !isOnline || sessionExpired || pendingCount === 0 || isSyncingRef.current) return
 
     isSyncingRef.current = true
     // Sales first, then corrections: a correction refers to a sale, so replaying
@@ -160,7 +227,15 @@ function App() {
       .finally(() => {
         isSyncingRef.current = false
       })
-  }, [isOnline, pendingCount, shift, refreshSales])
+  }, [isOnline, pendingCount, shift, refreshSales, sessionExpired, syncTick])
+
+  // A server that is down while the tablet thinks it is online changes nothing
+  // that would re-run the flush above, so queued records are retried on a timer.
+  useEffect(() => {
+    if (pendingCount === 0 || !isOnline) return
+    const timer = window.setInterval(() => setSyncTick((tick) => tick + 1), SYNC_RETRY_MS)
+    return () => window.clearInterval(timer)
+  }, [pendingCount, isOnline])
 
   function createCartLine(product: Product, modifiers: SnapshottedModifier[]): CartLine {
     return {
@@ -248,6 +323,15 @@ function App() {
       setPaidSale(result.sale)
       setOrderMode('PAID')
       await refreshSales(shift.id)
+
+      // Kept on the tablet although it is online: the server did not answer, or
+      // its price had moved. The flush sends it shortly; meanwhile refresh the
+      // menu so the next order is priced against the server's current one.
+      if (result.wasOffline && isOnline && !IS_DEMO) {
+        loadBootstrap()
+          .then((fresh) => setSnapshot(fresh.snapshot))
+          .catch(() => {})
+      }
     } catch (error) {
       setCheckoutError(
         error instanceof Error
@@ -283,17 +367,77 @@ function App() {
     setDiscountTarget(null)
   }
 
-  function openShift() {
-    setShift({
-      id: crypto.randomUUID(),
-      businessDate: getBusinessDate(new Date()),
-      openedAt: new Date().toISOString(),
-      openedByCashierId: account.cashier.id,
-    })
-    setScreen('REGISTER')
+  async function handleSignIn(email: string, password: string): Promise<string | null> {
+    if (IS_DEMO) {
+      if (email !== FAKE_LOGIN.email || password !== FAKE_LOGIN.password) {
+        return 'Incorrect email or password.'
+      }
+      setScreen(shift ? 'REGISTER' : 'SHIFT_OPEN')
+      return null
+    }
+
+    try {
+      await signIn(email, password)
+      const result = await loadBootstrap()
+      setSessionExpired(false)
+      applyBootstrap(result)
+      if (!result.openShift) {
+        // No shift open on the server — including the case where this tablet's
+        // shift was force-closed from the RMS while it was signed out. Anything
+        // still queued carries its own shift id and flushes once a shift is open.
+        setShift(null)
+        setScreen('SHIFT_OPEN')
+      }
+      return null
+    } catch (error) {
+      if (error instanceof ApiError) return error.message
+      return 'Cannot reach the server. Check the connection and try again.'
+    }
   }
 
-  function closeShift() {
+  function handleSignOut() {
+    signOut()
+    setScreen('SIGN_IN')
+  }
+
+  async function verifyOpenPin(pin: string): Promise<PinVerdict> {
+    if (IS_DEMO && pin !== FAKE_ACCOUNT.cashier.pin) return { ok: false }
+
+    try {
+      const opened = await openShiftOnServer(pin, account.cashier.id)
+      setShift(opened)
+      setScreen('REGISTER')
+      return { ok: true }
+    } catch (error) {
+      // The server checks the PIN before it checks for an open shift, so reaching
+      // this means the PIN was right and a shift is already running: resume it.
+      if (error instanceof ApiError && error.code === 'shift:ALREADY_OPEN') {
+        try {
+          const result = await loadBootstrap()
+          applyBootstrap(result)
+          if (result.openShift) return { ok: true }
+        } catch {
+          // Fall through to the server's own message.
+        }
+      }
+      return pinVerdictFor(error)
+    }
+  }
+
+  async function verifyClosePin(pin: string): Promise<PinVerdict> {
+    if (!shift) return { ok: false, message: 'No shift is open.' }
+    if (IS_DEMO && pin !== FAKE_ACCOUNT.cashier.pin) return { ok: false }
+
+    try {
+      await closeShiftOnServer(shift.id, pin, pendingCount)
+      finishShift()
+      return { ok: true }
+    } catch (error) {
+      return pinVerdictFor(error)
+    }
+  }
+
+  function finishShift() {
     startNextOrder()
     setSales([])
     setCorrections([])
@@ -307,15 +451,25 @@ function App() {
    * standing in front of the customer and the contra-entry is the record.
    */
   async function handleCancelSale(sale: CompletedSale, reason: string) {
+    setCorrectionError(null)
     const prior = corrections.filter(
       (correction) => correction.originalClientTxnId === sale.clientTxnId,
     )
-    await cancelSale(sale, prior, reason, (id) => brandsById.get(id)?.name ?? '—', isOnline)
+    try {
+      await cancelSale(sale, prior, reason, (id) => brandsById.get(id)?.name ?? '—', isOnline)
+    } catch (error) {
+      setCorrectionError(error instanceof Error ? error.message : 'The cancellation was not recorded.')
+    }
     if (shift) await refreshSales(shift.id)
   }
 
   async function handleExchange(sale: CompletedSale, plan: ExchangePlan, reason: string) {
-    await exchangeSale(sale, plan, reason, isOnline)
+    setCorrectionError(null)
+    try {
+      await exchangeSale(sale, plan, reason, isOnline)
+    } catch (error) {
+      setCorrectionError(error instanceof Error ? error.message : 'The exchange was not recorded.')
+    }
     setEditing(null)
     setScreen('RECENT_SALES')
     if (shift) await refreshSales(shift.id)
@@ -326,7 +480,8 @@ function App() {
       <SignInScreen
         outletName={account.account.outletName}
         businessName={account.account.businessName}
-        onSignedIn={() => setScreen('SHIFT_OPEN')}
+        onSignIn={handleSignIn}
+        showDemoHint={IS_DEMO || import.meta.env.DEV}
       />
     )
   }
@@ -337,8 +492,8 @@ function App() {
         cashier={account.cashier}
         outletName={account.account.outletName}
         businessDate={getBusinessDate(new Date())}
-        onShiftOpen={openShift}
-        onSignOut={() => setScreen('SIGN_IN')}
+        verifyPin={verifyOpenPin}
+        onSignOut={handleSignOut}
       />
     )
   }
@@ -349,9 +504,14 @@ function App() {
         businessDate={shift.businessDate}
         sales={sales}
         corrections={corrections}
-        onBack={() => setScreen('REGISTER')}
+        error={correctionError}
+        onBack={() => {
+          setCorrectionError(null)
+          setScreen('REGISTER')
+        }}
         onCancelSale={(sale, reason) => void handleCancelSale(sale, reason)}
         onEditSale={(sale) => {
+          setCorrectionError(null)
           setEditing(sale)
           setScreen('EDIT_ORDER')
         }}
@@ -381,13 +541,12 @@ function App() {
   if (screen === 'SHIFT_CLOSE') {
     return (
       <ShiftCloseScreen
-        cashier={account.cashier}
         businessDate={shift.businessDate}
         sales={sales}
         corrections={corrections}
         pendingCount={pendingCount}
         onBack={() => setScreen('REGISTER')}
-        onShiftClosed={closeShift}
+        verifyPin={verifyClosePin}
       />
     )
   }
@@ -419,6 +578,22 @@ function App() {
           role="status"
         >
           ⚠️ No internet connection — sales are saved on this device
+        </div>
+      ) : null}
+
+      {sessionExpired ? (
+        <div
+          className="flex min-h-11 shrink-0 flex-wrap items-center justify-center gap-3 bg-ink px-4 py-2 text-sm font-black text-white"
+          role="status"
+        >
+          Signed out — sales are being kept on this tablet until you sign in again.
+          <button
+            type="button"
+            onClick={() => setScreen('SIGN_IN')}
+            className="min-h-9 rounded-xl bg-white px-3 text-ink hover:bg-slate-100"
+          >
+            Sign in
+          </button>
         </div>
       ) : null}
 

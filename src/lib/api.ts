@@ -1,3 +1,4 @@
+import { getBusinessDate } from '../domain/business-date'
 import { calculateCartTotals, lineDiscountSen, modifierUnitTotalSen } from '../domain/cart'
 import { planCancel, planExchange, type ExchangePlan } from '../domain/corrections'
 import { assertSen } from '../domain/money'
@@ -9,9 +10,12 @@ import type {
   CorrectionResult,
   FinalizeCheckoutRequest,
   SaleCorrection,
+  Shift,
 } from '../domain/types'
-import { serverFinalizeCheckout, serverSubmitCorrection } from './fake-server'
+import * as fakeServer from './fake-server'
+import { ApiError, apiRequest, NetworkError, SessionExpiredError } from './http'
 import {
+  deleteCorrection,
   listPendingCorrections,
   listPendingSales,
   nextOfflineLabel,
@@ -25,6 +29,12 @@ export class CheckoutApiError extends Error {
     this.name = 'CheckoutApiError'
   }
 }
+
+/**
+ * Demo mode keeps the in-browser stand-in (`fake-server.ts`) and the demo menu,
+ * so the POS still runs with no server at all. Never set in production.
+ */
+export const IS_DEMO = import.meta.env.VITE_DEMO === '1'
 
 /**
  * Minted once per checkout attempt and reused across retries. This is the value
@@ -123,6 +133,75 @@ export function toCheckoutApiPayload(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Transport — the real API, or the in-browser stand-in in demo mode
+// ---------------------------------------------------------------------------
+
+type RecordedSale = {
+  orderId: string
+  queueNumber: string
+  totalSen: number
+  menuPriceSen: number
+  itemCount: number
+}
+
+type CheckoutResponse = {
+  order_id: string
+  queue_number: string
+  total_amount_sen: number
+  menu_price_sen: number
+  item_count: number
+}
+
+async function sendSale(
+  request: FinalizeCheckoutRequest,
+  claimedTotalSen: number,
+  origin: 'ONLINE' | 'OFFLINE_SYNC',
+  offlineLabel: string | null,
+): Promise<RecordedSale> {
+  if (IS_DEMO) {
+    const response = await fakeServer.serverFinalizeCheckout(request)
+    return {
+      orderId: response.order_id,
+      queueNumber: response.queue_number,
+      totalSen: response.total_sen,
+      menuPriceSen: response.menu_price_sen,
+      itemCount: response.item_count,
+    }
+  }
+
+  const response = await apiRequest<CheckoutResponse>(
+    'POST',
+    '/checkout',
+    toCheckoutApiPayload(request, claimedTotalSen, origin, offlineLabel),
+  )
+  return {
+    orderId: response.order_id,
+    queueNumber: response.queue_number,
+    totalSen: response.total_amount_sen,
+    menuPriceSen: response.menu_price_sen,
+    itemCount: response.item_count,
+  }
+}
+
+async function sendCorrection(
+  correction: SaleCorrection,
+  origin: 'ONLINE' | 'OFFLINE_SYNC',
+): Promise<string> {
+  if (IS_DEMO) return (await fakeServer.serverSubmitCorrection(correction)).correction_id
+
+  const response = await apiRequest<{ correction_id: string }>(
+    'POST',
+    '/corrections',
+    toCorrectionApiPayload(correction, origin),
+  )
+  return response.correction_id
+}
+
+// ---------------------------------------------------------------------------
+// Sales
+// ---------------------------------------------------------------------------
+
 type FinalizeInput = {
   request: FinalizeCheckoutRequest
   totalSen: number
@@ -132,10 +211,13 @@ type FinalizeInput = {
 
 /**
  * Complete a sale. Online it goes to the server and comes back with a real queue
- * number; offline it is written to the local queue with an `#OFF-NN` label so
+ * number; otherwise it is written to the local queue with an `#OFF-NN` label so
  * the counter keeps moving and the kitchen still has something to call out.
  *
- * Either way the sale is durable before this resolves.
+ * Either way the sale is durable before this resolves. By the time "Mark paid"
+ * is tapped the customer has already paid, so a paid sale is never left
+ * unrecorded — the only case that stops the cashier is a server that answered
+ * and refused for a reason that retrying cannot fix.
  */
 export async function finalizeCheckout({
   request,
@@ -145,7 +227,7 @@ export async function finalizeCheckout({
 }: FinalizeInput): Promise<CheckoutResult> {
   const completedAt = new Date().toISOString()
 
-  if (!isOnline) {
+  async function keepOnDevice(): Promise<CheckoutResult> {
     const offlineLabel = await nextOfflineLabel(request.business_date)
     const sale: CompletedSale = {
       clientTxnId: request.client_txn_id,
@@ -166,16 +248,18 @@ export async function finalizeCheckout({
     return { sale, wasOffline: true }
   }
 
+  if (!isOnline) return keepOnDevice()
+
   try {
-    const response = await serverFinalizeCheckout(request)
+    const recorded = await sendSale(request, totalSen, 'ONLINE', null)
     const sale: CompletedSale = {
       clientTxnId: request.client_txn_id,
-      orderId: response.order_id,
-      queueLabel: response.queue_number,
+      orderId: recorded.orderId,
+      queueLabel: recorded.queueNumber,
       offlineLabel: null,
-      totalSen: response.total_sen,
-      menuPriceSen: response.menu_price_sen,
-      itemCount: response.item_count,
+      totalSen: recorded.totalSen,
+      menuPriceSen: recorded.menuPriceSen,
+      itemCount: recorded.itemCount,
       completedAt,
       businessDate: request.business_date,
       syncStatus: 'SYNCED',
@@ -183,12 +267,23 @@ export async function finalizeCheckout({
     }
     await saveSale(sale)
     return { sale, wasOffline: false }
-  } catch {
-    // The request may in fact have reached the server. Never advise paying again;
-    // the same client_txn_id on retry is what makes a second attempt safe.
-    throw new CheckoutApiError(
-      'The connection dropped while recording this sale. If the customer has already paid, do not ask them to pay again — retry the same order.',
-    )
+  } catch (error) {
+    // The menu on this tablet was out of date, so the server's price differs from
+    // the one the customer just paid. The money has moved: record it at the price
+    // charged, exactly as an offline sale is, with the server's own figure kept
+    // alongside. Refusing it would leave a paid sale unrecorded.
+    if (error instanceof ApiError && error.code === 'checkout:GROSS_MISMATCH') {
+      return keepOnDevice()
+    }
+    // Any other refusal is something retrying cannot fix — show it.
+    if (error instanceof ApiError) throw new CheckoutApiError(error.message)
+    // No answer, or signed out. The request may or may not have landed, so the
+    // sale is kept under its original key and the flush replays it: if the server
+    // did record it, the replay returns that order rather than a second one.
+    if (error instanceof NetworkError || error instanceof SessionExpiredError) {
+      return keepOnDevice()
+    }
+    throw error
   }
 }
 
@@ -218,21 +313,24 @@ export async function syncPendingSales(): Promise<SyncOutcome> {
 
   for (const sale of pending) {
     try {
-      const response = await serverFinalizeCheckout(sale.request)
+      const recorded = await sendSale(sale.request, sale.totalSen, 'OFFLINE_SYNC', sale.offlineLabel)
       await saveSale({
         ...sale,
-        orderId: response.order_id,
+        orderId: recorded.orderId,
         // The server owns the real numbering, and the queue label is renumbered
         // to match it on arrival.
-        queueLabel: response.queue_number,
-        totalSen: response.total_sen,
-        menuPriceSen: response.menu_price_sen,
-        itemCount: response.item_count,
+        queueLabel: recorded.queueNumber,
+        totalSen: recorded.totalSen,
+        menuPriceSen: recorded.menuPriceSen,
+        itemCount: recorded.itemCount,
         syncStatus: 'SYNCED',
       })
       syncedCount += 1
-    } catch {
+    } catch (error) {
       failedCount += 1
+      // Unreachable or signed out: stop here and keep the rest in order for the
+      // next attempt, rather than hammering a server that is not answering.
+      if (error instanceof NetworkError || error instanceof SessionExpiredError) break
     }
   }
 
@@ -323,17 +421,21 @@ async function recordCorrection({
   if (!isOnline) return { correction, wasOffline: true }
 
   try {
-    const response = await serverSubmitCorrection(correction)
-    const synced: SaleCorrection = {
-      ...correction,
-      correctionId: response.correction_id,
-      syncStatus: 'SYNCED',
-    }
+    const correctionId = await sendCorrection(correction, 'ONLINE')
+    const synced: SaleCorrection = { ...correction, correctionId, syncStatus: 'SYNCED' }
     await saveCorrection(synced)
     return { correction: synced, wasOffline: false }
-  } catch {
-    // It stays PENDING and the flush will replay it on the same key. The
-    // correction is not lost and cannot be applied twice.
+  } catch (error) {
+    if (error instanceof ApiError) {
+      // Refused, and retrying cannot change that: the refund does not match what
+      // the server computes, the shift is closed, the sale is already fully
+      // cancelled. Left queued it would retry forever and block the shift close,
+      // so it is removed and the cashier is told plainly nothing was recorded.
+      await deleteCorrection(correction.clientTxnId)
+      throw new CheckoutApiError(`Not recorded — ${error.message}`)
+    }
+    // No answer or signed out: it stays PENDING and the flush replays it on the
+    // same key. It is not lost and cannot be applied twice.
     return { correction, wasOffline: true }
   }
 }
@@ -392,19 +494,61 @@ export async function syncPendingCorrections(): Promise<SyncOutcome> {
 
   for (const correction of pending) {
     try {
-      const response = await serverSubmitCorrection(correction)
-      await saveCorrection({
-        ...correction,
-        correctionId: response.correction_id,
-        syncStatus: 'SYNCED',
-      })
+      const correctionId = await sendCorrection(correction, 'OFFLINE_SYNC')
+      await saveCorrection({ ...correction, correctionId, syncStatus: 'SYNCED' })
       syncedCount += 1
-    } catch {
+    } catch (error) {
       failedCount += 1
+      if (error instanceof NetworkError || error instanceof SessionExpiredError) break
     }
   }
 
   return { syncedCount, failedCount }
+}
+
+// ---------------------------------------------------------------------------
+// Shifts
+// ---------------------------------------------------------------------------
+
+type ShiftResponse = { id: string; business_date: string; opened_at: string }
+
+/**
+ * Open a shift. The server checks the PIN, so the PIN never has to live on the
+ * device, and it is the server that issues the shift id every sale then carries.
+ */
+export async function openShiftOnServer(pin: string, cashierId: string): Promise<Shift> {
+  if (IS_DEMO) {
+    return {
+      id: crypto.randomUUID(),
+      businessDate: getBusinessDate(new Date()),
+      openedAt: new Date().toISOString(),
+      openedByCashierId: cashierId,
+    }
+  }
+
+  const response = await apiRequest<ShiftResponse>('POST', '/shifts/open', { pin })
+  return {
+    id: response.id,
+    businessDate: response.business_date,
+    openedAt: response.opened_at,
+    openedByCashierId: cashierId,
+  }
+}
+
+/**
+ * Close a shift with the PIN only. The device reports how many records it is
+ * still holding; the server refuses the close while that is non-zero.
+ */
+export async function closeShiftOnServer(
+  shiftId: string,
+  pin: string,
+  devicePendingCount: number,
+): Promise<void> {
+  if (IS_DEMO) return
+  await apiRequest('POST', `/shifts/${shiftId}/close`, {
+    pin,
+    device_pending_count: devicePendingCount,
+  })
 }
 
 export { planExchange }

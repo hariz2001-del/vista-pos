@@ -1,18 +1,18 @@
 import { AlertTriangle, ArrowLeft, CloudOff, Undo2 } from 'lucide-react'
 import { useMemo } from 'react'
-import { PinPad } from '../components/PinPad'
+import { PinPad, type PinVerdict } from '../components/PinPad'
 import { formatBusinessDate } from '../domain/business-date'
 import { formatRinggit, formatSignedRinggit } from '../domain/money'
-import type { Cashier, CompletedSale, SaleCorrection } from '../domain/types'
+import type { CompletedSale, SaleCorrection } from '../domain/types'
 
 type Props = {
-  cashier: Cashier
   businessDate: string
   sales: CompletedSale[]
   corrections: SaleCorrection[]
   pendingCount: number
   onBack: () => void
-  onShiftClosed: () => void
+  /** Closes the shift on the server; resolves to what the PIN pad should show. */
+  verifyPin: (pin: string) => Promise<PinVerdict>
 }
 
 /**
@@ -27,13 +27,12 @@ type Props = {
  * server yet — closing over it would leave the shift's record incomplete.
  */
 export function ShiftCloseScreen({
-  cashier,
   businessDate,
   sales,
   corrections,
   pendingCount,
   onBack,
-  onShiftClosed,
+  verifyPin,
 }: Props) {
   const summary = useMemo(() => {
     const salesSen = sales.reduce((sum, sale) => sum + sale.totalSen, 0)
@@ -118,9 +117,8 @@ export function ShiftCloseScreen({
             <PinPad
               title="Confirm Close Shift"
               subtitle="Enter the counter PIN"
-              expectedPin={cashier.pin}
               confirmLabel="4-digit PIN"
-              onSuccess={onShiftClosed}
+              verify={verifyPin}
             />
           )}
         </section>

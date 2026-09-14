@@ -1,5 +1,5 @@
 import { CalendarDays, Moon } from 'lucide-react'
-import { PinPad } from '../components/PinPad'
+import { PinPad, type PinVerdict } from '../components/PinPad'
 import { formatBusinessDate } from '../domain/business-date'
 import type { Cashier } from '../domain/types'
 
@@ -7,7 +7,8 @@ type Props = {
   cashier: Cashier
   outletName: string
   businessDate: string
-  onShiftOpen: () => void
+  /** Opens the shift on the server; resolves to what the PIN pad should show. */
+  verifyPin: (pin: string) => Promise<PinVerdict>
   onSignOut: () => void
 }
 
@@ -20,7 +21,7 @@ export function ShiftOpenScreen({
   cashier,
   outletName,
   businessDate,
-  onShiftOpen,
+  verifyPin,
   onSignOut,
 }: Props) {
   const isAfterMidnight = new Date().getHours() < 5
@@ -64,9 +65,8 @@ export function ShiftOpenScreen({
             <PinPad
               title="Open Shift"
               subtitle="Enter the counter PIN to start"
-              expectedPin={cashier.pin}
               confirmLabel="4-digit PIN"
-              onSuccess={onShiftOpen}
+              verify={verifyPin}
             />
           </div>
         </div>

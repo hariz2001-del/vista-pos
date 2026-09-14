@@ -9,6 +9,8 @@ type Props = {
   businessDate: string
   sales: CompletedSale[]
   corrections: SaleCorrection[]
+  /** Why the last cancel or exchange was not recorded, if the server refused it. */
+  error?: string | null
   onBack: () => void
   onCancelSale: (sale: CompletedSale, reason: string) => void
   onEditSale: (sale: CompletedSale) => void
@@ -40,6 +42,7 @@ export function RecentSalesScreen({
   businessDate,
   sales,
   corrections,
+  error = null,
   onBack,
   onCancelSale,
   onEditSale,
@@ -70,6 +73,12 @@ export function RecentSalesScreen({
           Fix a mistake here and now. A correction is recorded next to the original sale — the
           sale itself is never changed.
         </p>
+
+        {error ? (
+          <p className="mt-4 rounded-2xl bg-red-50 p-3 text-sm font-bold text-danger" role="alert">
+            {error}
+          </p>
+        ) : null}
 
         {sales.length === 0 ? (
           <div className="mt-10 grid place-items-center rounded-3xl bg-white p-12 text-center shadow-sm">

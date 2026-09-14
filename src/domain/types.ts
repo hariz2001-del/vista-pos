@@ -104,8 +104,8 @@ export type Cashier = {
   id: string
   name: string
   imageUrl: string
-  /** Fake local PIN. Real verification will happen server-side; this never ships as-is. */
-  pin: string
+  /** Demo mode only. Real PINs are verified by the server and never reach the device. */
+  pin?: string
 }
 
 export type Shift = {
