@@ -9,7 +9,8 @@ real API. Set `VITE_DEMO=1` to run with no server at all against the in-browser 
 
 ## Screens
 
-1. **Sign in** — one account, shared with the future Owner RMS
+1. **Sign in** — done once by the owner with the business's one account. The counter then stays
+   signed in; there is no sign-out on the tablet. Only the RMS can sign it out.
 2. **Shift open** — 4-digit PIN, resolves the business date
 3. **Register** — image-card catalogue, brand and category filters, search, sold-out states
 4. **Modifier** — a popup confined to the catalogue column, enforcing required groups and min/max
@@ -65,10 +66,11 @@ it is the server that issues the shift — but selling within an open shift does
 | Password | `vista` |
 | Counter PIN | `1234` |
 
-These are the accounts `api-vista`'s seed creates (`npm run seed`): the cashier above, plus
-`food@vistahub.my` (Hariz) and `drinks@vistahub.my` (Iman) for the owner RMS, all with the same
-password and PIN. The menu comes from the database — two brands, seven categories, fourteen
-products — so modifier ids are real and the server can reprice them.
+This is the business's one account, created by `api-vista`'s seed (`npm run seed`). The same
+email and password sign in to the owner RMS; the PIN is the counter PIN. Signing in here gives a
+**counter session**: it never expires and can sell, correct and run shifts, but it cannot open
+the owner's books. The partners (Hariz, Iman) are names in RMS Settings, not logins. The menu
+comes from the database, so modifier ids are real and the server can reprice them.
 
 [`src/data/fake-account/`](src/data/fake-account/) is used only in demo mode (`VITE_DEMO=1`).
 Malay dish names are kept because that is what the stall actually calls them; everything around

@@ -9,13 +9,16 @@ type Props = {
   onSignIn: (email: string, password: string) => Promise<string | null>
   /** Pre-fill and show the demo credentials. Local development and demo mode only. */
   showDemoHint: boolean
+  /** Why the counter is on this screen, when it was signed out rather than never signed in. */
+  notice?: string | null
 }
 
 /**
- * One account signs in to both the POS and the owner RMS. Per-cashier
- * accountability comes from the PIN at shift boundaries, not a second login.
+ * The owner signs the counter in once, with the business's one account. After
+ * that it stays signed in and the cashier only ever uses the PIN. This screen
+ * comes back only if the owner signs the counter out from the RMS.
  */
-export function SignInScreen({ outletName, businessName, onSignIn, showDemoHint }: Props) {
+export function SignInScreen({ outletName, businessName, onSignIn, showDemoHint, notice = null }: Props) {
   const [email, setEmail] = useState(showDemoHint ? FAKE_LOGIN.email : '')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -56,8 +59,14 @@ export function SignInScreen({ outletName, businessName, onSignIn, showDemoHint 
         >
           <h1 className="text-2xl font-black">Counter Sign In</h1>
           <p className="mt-1 text-sm font-semibold text-slate-500">
-            The same account is used for the owner dashboard.
+            The owner signs the counter in once. It then stays signed in.
           </p>
+
+          {notice ? (
+            <p className="mt-4 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-900" role="status">
+              {notice}
+            </p>
+          ) : null}
 
           <label className="mt-6 block text-sm font-black" htmlFor="signin-email">
             Email

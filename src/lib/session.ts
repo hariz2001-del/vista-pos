@@ -8,13 +8,17 @@ export type SessionUser = {
 }
 
 /**
- * One account signs in to both the POS and the owner RMS. Per-person
- * accountability at the counter comes from the PIN at shift open and close.
+ * The business has one account. The owner signs the counter in once; after that
+ * the cashier only ever uses the PIN, and nothing on the tablet signs it out.
  */
 export async function signIn(email: string, password: string): Promise<SessionUser> {
+  // A counter session: it never expires, and it cannot open the owner's books —
+  // a stolen tablet can sell, but cannot reach the money. The owner signs the
+  // counter out from the RMS when they need to.
   const result = await apiRequest<{ token: string; user: SessionUser }>('POST', '/auth/login', {
     email,
     password,
+    scope: 'COUNTER',
   })
   writeToken(result.token)
   return result.user

@@ -45,7 +45,7 @@ import {
   listCorrectionsForShift,
   listSalesForShift,
 } from './lib/offline-queue'
-import { hasSession, signIn, signOut } from './lib/session'
+import { hasSession, signIn } from './lib/session'
 import { EditOrderScreen } from './screens/EditOrderScreen'
 import { RecentSalesScreen } from './screens/RecentSalesScreen'
 import { ShiftCloseScreen } from './screens/ShiftCloseScreen'
@@ -207,7 +207,17 @@ function App() {
       })
   }, [applyBootstrap])
 
-  useEffect(() => onSessionExpired(() => setSessionExpired(true)), [])
+  // Signed out from the owner dashboard: lock straight back to the sign-in
+  // screen. Nothing is lost — anything not yet sent stays on the tablet and
+  // flushes once the counter is signed in again.
+  useEffect(
+    () =>
+      onSessionExpired(() => {
+        setSessionExpired(true)
+        setScreen('SIGN_IN')
+      }),
+    [],
+  )
 
   // Load this shift's sales once it is open. IndexedDB is an external system, so
   // this belongs in an effect; `refreshSales` awaits before setting state, so the
@@ -423,11 +433,6 @@ function App() {
     }
   }
 
-  function handleSignOut() {
-    signOut()
-    setScreen('SIGN_IN')
-  }
-
   async function verifyOpenPin(pin: string): Promise<PinVerdict> {
     if (IS_DEMO && pin !== FAKE_ACCOUNT.cashier.pin) return { ok: false }
 
@@ -510,6 +515,11 @@ function App() {
         businessName={account.account.businessName}
         onSignIn={handleSignIn}
         showDemoHint={IS_DEMO || import.meta.env.DEV}
+        notice={
+          sessionExpired
+            ? 'This counter was signed out from the owner dashboard. Sales not yet sent are safe on this tablet and will send once it is signed in again.'
+            : null
+        }
       />
     )
   }
@@ -521,7 +531,6 @@ function App() {
         outletName={account.account.outletName}
         businessDate={getBusinessDate(new Date())}
         verifyPin={verifyOpenPin}
-        onSignOut={handleSignOut}
       />
     )
   }
@@ -606,22 +615,6 @@ function App() {
           role="status"
         >
           ⚠️ No internet connection — sales are saved on this device
-        </div>
-      ) : null}
-
-      {sessionExpired ? (
-        <div
-          className="flex min-h-11 shrink-0 flex-wrap items-center justify-center gap-3 bg-ink px-4 py-2 text-sm font-black text-white"
-          role="status"
-        >
-          Signed out — sales are being kept on this tablet until you sign in again.
-          <button
-            type="button"
-            onClick={() => setScreen('SIGN_IN')}
-            className="min-h-9 rounded-xl bg-white px-3 text-ink hover:bg-slate-100"
-          >
-            Sign in
-          </button>
         </div>
       ) : null}
 

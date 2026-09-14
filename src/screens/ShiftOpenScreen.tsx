@@ -9,21 +9,18 @@ type Props = {
   businessDate: string
   /** Opens the shift on the server; resolves to what the PIN pad should show. */
   verifyPin: (pin: string) => Promise<PinVerdict>
-  onSignOut: () => void
 }
 
 /**
  * The business date is resolved once, here, and every sale in the shift is
  * stamped with it. A shift that runs past midnight keeps the date it opened on,
  * so a 1am sale reports as part of the night it belongs to.
+ *
+ * There is deliberately no sign-out here. The counter stays signed in; the PIN
+ * is the only thing the cashier ever uses, and only the owner can sign the
+ * tablet out, from the RMS.
  */
-export function ShiftOpenScreen({
-  cashier,
-  outletName,
-  businessDate,
-  verifyPin,
-  onSignOut,
-}: Props) {
+export function ShiftOpenScreen({ cashier, outletName, businessDate, verifyPin }: Props) {
   const isAfterMidnight = new Date().getHours() < 5
 
   return (
@@ -70,14 +67,6 @@ export function ShiftOpenScreen({
             />
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={onSignOut}
-          className="mx-auto mt-4 block min-h-11 px-4 text-sm font-black text-slate-500 hover:text-ink"
-        >
-          Sign out
-        </button>
       </div>
     </div>
   )
