@@ -3,9 +3,12 @@
 Touch-first React + Vite PWA for Vista's cashless Food + Drinks counter. Interface language is
 English throughout.
 
+Part of the Vista system: **vista-pos** (cashier) · [vista-rms](https://github.com/hariz2001-del/vista-rms) (owner dashboard) · [vista-api](https://github.com/hariz2001-del/vista-api) (backend).
+
 **Status: UI round.** The whole app runs against an in-browser fake account with a simulated
-server. There is no backend yet — `api-vista/` is still empty. The point of this round is to see
-and settle the interface before the server is designed.
+server. The backend now lives in [vista-api](https://github.com/hariz2001-del/vista-api) (money path
+built); wiring this app to it is the next round. The point of this round was to see and settle the
+interface before the server was designed.
 
 ## Screens
 
