@@ -1,6 +1,7 @@
 import { LoaderCircle, LogIn } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { FAKE_LOGIN } from '../data/fake-account'
+import { HUB_URL } from '../lib/hub'
 
 type Props = {
   outletName: string
@@ -108,6 +109,13 @@ export function SignInScreen({ outletName, businessName, onSignIn, showDemoHint,
             )}
             Sign In
           </button>
+
+          <p className="mt-5 text-center text-sm font-semibold text-slate-500">
+            New business?{' '}
+            <a href={HUB_URL} className="font-black text-ink underline">
+              Register at {new URL(HUB_URL).host}
+            </a>
+          </p>
 
           {showDemoHint ? (
             <p className="mt-5 rounded-xl bg-amber-50 p-3 text-center text-xs font-bold text-amber-900">

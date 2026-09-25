@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_DEMO?: string
   readonly VITE_DUITNOW_QR_IMAGE_URL?: string
   readonly VITE_USE_MOCK_CHECKOUT?: string
+  /** vistahub.my, for the "register a business" link. Defaults to the live hub. */
+  readonly VITE_HUB_URL?: string
 }
 
 interface ImportMeta {

@@ -19,6 +19,63 @@ const CORRECTIONS = 'corrections'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
+// ---------------------------------------------------------------------------
+// Which business this device is selling for
+// ---------------------------------------------------------------------------
+
+/**
+ * A tablet can be signed out and signed in to a different business. Its unsent
+ * records must never follow it: a sale rung up for one business and posted
+ * under another's session would land in the wrong books. So every record is
+ * stamped with the business it was made for, and only that business's records
+ * are ever sent, counted or closed against.
+ */
+const BUSINESS_KEY = 'vista.pos.business'
+
+function storedBusiness(): string | null {
+  try {
+    return localStorage.getItem(BUSINESS_KEY)
+  } catch {
+    return null
+  }
+}
+
+// Demo mode has no server to say which business this is; it is always the demo.
+let currentBusiness: string | null =
+  import.meta.env.VITE_DEMO === '1' ? 'demo' : storedBusiness()
+
+/**
+ * Record which business the device is signed in to, from the server's
+ * bootstrap. The first time a device learns its business, anything it queued
+ * before this was known is adopted by it — the tablet was already signed in to
+ * that business when it rang those records up.
+ */
+export async function setDeviceBusiness(businessId: string): Promise<void> {
+  const firstTime = storedBusiness() === null
+  currentBusiness = businessId
+  try {
+    localStorage.setItem(BUSINESS_KEY, businessId)
+  } catch {
+    // Kept in memory for this session regardless.
+  }
+  if (!firstTime) return
+
+  const [sales, corrections] = await Promise.all([allSales(), allCorrections()])
+  for (const sale of sales) {
+    if (!sale.businessId) await runTransaction('readwrite', (store) => store.put({ ...sale, businessId }))
+  }
+  for (const correction of corrections) {
+    if (!correction.businessId) {
+      await runTransaction('readwrite', (store) => store.put({ ...correction, businessId }), CORRECTIONS)
+    }
+  }
+}
+
+/** Belongs to the business the device is signed in to now. */
+function isOurs(record: { businessId?: string }): boolean {
+  return currentBusiness !== null && record.businessId === currentBusiness
+}
+
 /** Opened lazily so that merely importing this module does not touch IndexedDB. */
 function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise
@@ -62,8 +119,10 @@ function runTransaction<T>(
   )
 }
 
+/** Stamped with the device's business on first save; a later update keeps it. */
 export function saveSale(sale: CompletedSale): Promise<IDBValidKey> {
-  return runTransaction('readwrite', (store) => store.put(sale))
+  const stamped = sale.businessId ? sale : { ...sale, businessId: currentBusiness ?? undefined }
+  return runTransaction('readwrite', (store) => store.put(stamped))
 }
 
 async function allSales(): Promise<CompletedSale[]> {
@@ -85,11 +144,14 @@ export async function listSalesForShift(shiftId: string): Promise<CompletedSale[
     .sort((a, b) => b.completedAt.localeCompare(a.completedAt))
 }
 
-/** Unsynced sales in the order they were rung up. Replay must be chronological. */
+/**
+ * This business's unsynced sales, in the order they were rung up. Replay must
+ * be chronological. Another business's are left alone — see `setDeviceBusiness`.
+ */
 export async function listPendingSales(): Promise<CompletedSale[]> {
   const rows = await allSales()
   return rows
-    .filter((sale) => sale.syncStatus === 'PENDING')
+    .filter((sale) => sale.syncStatus === 'PENDING' && isOurs(sale))
     .sort((a, b) => a.completedAt.localeCompare(b.completedAt))
 }
 
@@ -108,7 +170,7 @@ export async function nextOfflineLabel(businessDate: string): Promise<string> {
   let highest = 0
 
   for (const sale of rows) {
-    if (sale.businessDate !== businessDate || !sale.offlineLabel) continue
+    if (!isOurs(sale) || sale.businessDate !== businessDate || !sale.offlineLabel) continue
     const parsed = Number(sale.offlineLabel.replace(/^#OFF-/, ''))
     if (Number.isSafeInteger(parsed) && parsed > highest) highest = parsed
   }
@@ -121,7 +183,10 @@ export async function nextOfflineLabel(businessDate: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 export function saveCorrection(correction: SaleCorrection): Promise<IDBValidKey> {
-  return runTransaction('readwrite', (store) => store.put(correction), CORRECTIONS)
+  const stamped = correction.businessId
+    ? correction
+    : { ...correction, businessId: currentBusiness ?? undefined }
+  return runTransaction('readwrite', (store) => store.put(stamped), CORRECTIONS)
 }
 
 /**
@@ -144,16 +209,17 @@ export async function listCorrectionsForShift(shiftId: string): Promise<SaleCorr
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 }
 
-/** Unsynced corrections in the order they were made. Replay must be chronological. */
+/** This business's unsynced corrections, in the order they were made. */
 export async function listPendingCorrections(): Promise<SaleCorrection[]> {
   const rows = await allCorrections()
   return rows
-    .filter((correction) => correction.syncStatus === 'PENDING')
+    .filter((correction) => correction.syncStatus === 'PENDING' && isOurs(correction))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 }
 
 /**
- * Everything the device is still holding: sales and corrections alike.
+ * Everything the device is still holding for this business: sales and
+ * corrections alike.
  *
  * A shift close is refused while this is non-zero, so a correction cannot be
  * stranded on the tablet any more easily than a sale can.
@@ -161,6 +227,18 @@ export async function listPendingCorrections(): Promise<SaleCorrection[]> {
 export async function countPendingRecords(): Promise<number> {
   const [sales, corrections] = await Promise.all([listPendingSales(), listPendingCorrections()])
   return sales.length + corrections.length
+}
+
+/**
+ * Unsent records that belong to another business — left on the tablet when it
+ * was signed in to a different account. They wait there until that business
+ * signs this tablet in again.
+ */
+export async function countOtherBusinessRecords(): Promise<number> {
+  const [sales, corrections] = await Promise.all([allSales(), allCorrections()])
+  const stranded = (record: { syncStatus: string; businessId?: string }) =>
+    record.syncStatus === 'PENDING' && !isOurs(record)
+  return sales.filter(stranded).length + corrections.filter(stranded).length
 }
 
 /** Test and demo affordance: wipe the local store. */

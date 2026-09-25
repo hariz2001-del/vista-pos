@@ -9,6 +9,8 @@ type Props = {
   businessDate: string
   /** Opens the shift on the server; resolves to what the PIN pad should show. */
   verifyPin: (pin: string) => Promise<PinVerdict>
+  /** Something the cashier should know before opening, e.g. another business's unsent sales. */
+  notice?: string | null
 }
 
 /**
@@ -20,7 +22,7 @@ type Props = {
  * is the only thing the cashier ever uses, and only the owner can sign the
  * tablet out, from the RMS.
  */
-export function ShiftOpenScreen({ cashier, outletName, businessDate, verifyPin }: Props) {
+export function ShiftOpenScreen({ cashier, outletName, businessDate, verifyPin, notice = null }: Props) {
   const isAfterMidnight = new Date().getHours() < 5
 
   return (
@@ -55,6 +57,12 @@ export function ShiftOpenScreen({ cashier, outletName, businessDate, verifyPin }
             <p className="mt-3 flex items-start gap-2 rounded-2xl bg-amber-50 p-3 text-xs font-bold text-amber-900">
               <Moon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
               After midnight — sales are recorded under yesterday's business date until 5am.
+            </p>
+          ) : null}
+
+          {notice ? (
+            <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-xs font-bold text-amber-900" role="status">
+              {notice}
             </p>
           ) : null}
 
