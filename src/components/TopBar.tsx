@@ -1,5 +1,6 @@
 import { CloudOff, Expand, LogOut, Minimize, PlugZap, ReceiptText, Wifi, WifiOff } from 'lucide-react'
 import { formatBusinessDate } from '../domain/business-date'
+import { Clock } from './Clock'
 
 type Props = {
   outletName: string
@@ -56,6 +57,7 @@ export function TopBar({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <Clock />
         <div className="hidden min-h-11 items-center gap-2 rounded-xl bg-white/10 px-3 text-sm font-semibold xl:flex">
           <img
             src={cashierImageUrl}
