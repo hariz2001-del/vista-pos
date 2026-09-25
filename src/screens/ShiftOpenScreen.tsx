@@ -1,5 +1,5 @@
 import { CalendarDays, Moon } from 'lucide-react'
-import { PinPad } from '../components/PinPad'
+import { PinPad, type PinVerdict } from '../components/PinPad'
 import { formatBusinessDate } from '../domain/business-date'
 import type { Cashier } from '../domain/types'
 
@@ -7,22 +7,20 @@ type Props = {
   cashier: Cashier
   outletName: string
   businessDate: string
-  onShiftOpen: () => void
-  onSignOut: () => void
+  /** Opens the shift on the server; resolves to what the PIN pad should show. */
+  verifyPin: (pin: string) => Promise<PinVerdict>
 }
 
 /**
  * The business date is resolved once, here, and every sale in the shift is
  * stamped with it. A shift that runs past midnight keeps the date it opened on,
  * so a 1am sale reports as part of the night it belongs to.
+ *
+ * There is deliberately no sign-out here. The counter stays signed in; the PIN
+ * is the only thing the cashier ever uses, and only the owner can sign the
+ * tablet out, from the RMS.
  */
-export function ShiftOpenScreen({
-  cashier,
-  outletName,
-  businessDate,
-  onShiftOpen,
-  onSignOut,
-}: Props) {
+export function ShiftOpenScreen({ cashier, outletName, businessDate, verifyPin }: Props) {
   const isAfterMidnight = new Date().getHours() < 5
 
   return (
@@ -64,20 +62,11 @@ export function ShiftOpenScreen({
             <PinPad
               title="Open Shift"
               subtitle="Enter the counter PIN to start"
-              expectedPin={cashier.pin}
               confirmLabel="4-digit PIN"
-              onSuccess={onShiftOpen}
+              verify={verifyPin}
             />
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={onSignOut}
-          className="mx-auto mt-4 block min-h-11 px-4 text-sm font-black text-slate-500 hover:text-ink"
-        >
-          Sign out
-        </button>
       </div>
     </div>
   )

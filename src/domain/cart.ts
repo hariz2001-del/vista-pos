@@ -52,6 +52,39 @@ export function calculateCartTotals(
   }
 }
 
+/**
+ * Split `amountSen` across `bases` in proportion, so the parts sum to the whole
+ * exactly.
+ *
+ * Largest remainder rather than dumping the residual on the last entry: both sum
+ * exactly, but largest-remainder also guarantees no entry receives more than its
+ * own share rounded up, so nothing can be pushed negative by the rounding.
+ *
+ * Shared by the discount split and the correction split so the money a refund
+ * attributes to a brand is apportioned by the same rule as the sale was.
+ */
+export function apportionByLargestRemainder(
+  amountSen: number,
+  bases: readonly number[],
+): number[] {
+  const totalBaseSen = bases.reduce((sum, base) => sum + base, 0)
+  const exact = bases.map((base) => (totalBaseSen === 0 ? 0 : (amountSen * base) / totalBaseSen))
+  const shares = exact.map(Math.floor)
+  let allocated = shares.reduce((sum, share) => sum + share, 0)
+
+  const byRemainder = exact
+    .map((value, index) => ({ index, remainder: value - Math.floor(value) }))
+    .sort((a, b) => b.remainder - a.remainder || a.index - b.index)
+
+  for (const { index } of byRemainder) {
+    if (allocated >= amountSen) break
+    shares[index] = (shares[index] ?? 0) + 1
+    allocated += 1
+  }
+
+  return shares
+}
+
 export function maxDiscountForLine(line: CartLine): number {
   return lineGrossSen(line)
 }
@@ -108,24 +141,7 @@ export function splitDiscountByBrand(
   const bases = brands.map((brand) => brand.grossSen - brand.itemDiscountSen)
   const totalBaseSen = bases.reduce((sum, base) => sum + base, 0)
   const cartDiscountSen = Math.min(requestedCartDiscountSen, totalBaseSen)
-
-  // Largest remainder: floor everyone, then hand the leftover sen to whichever
-  // brands were rounded down hardest.
-  const exact = bases.map((base) =>
-    totalBaseSen === 0 ? 0 : (cartDiscountSen * base) / totalBaseSen,
-  )
-  const shares = exact.map(Math.floor)
-  let allocated = shares.reduce((sum, share) => sum + share, 0)
-
-  const byRemainder = exact
-    .map((value, index) => ({ index, remainder: value - Math.floor(value) }))
-    .sort((a, b) => b.remainder - a.remainder || a.index - b.index)
-
-  for (const { index } of byRemainder) {
-    if (allocated >= cartDiscountSen) break
-    shares[index] += 1
-    allocated += 1
-  }
+  const shares = apportionByLargestRemainder(cartDiscountSen, bases)
 
   return brands.map((brand, index) => {
     const cartShareSen = shares[index] ?? 0

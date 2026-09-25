@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "my.vistahub.pos",
+      "sha256_cert_fingerprints": [
+        "6E:27:84:5D:C6:FA:FC:D3:5E:14:B4:8C:DC:D8:AF:91:7C:8A:7F:B6:92:37:57:EB:6B:E6:63:DB:7C:6F:C4:DC"
+      ]
+    }
+  }
+]

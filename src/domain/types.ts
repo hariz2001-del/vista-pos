@@ -104,8 +104,8 @@ export type Cashier = {
   id: string
   name: string
   imageUrl: string
-  /** Fake local PIN. Real verification will happen server-side; this never ships as-is. */
-  pin: string
+  /** Demo mode only. Real PINs are verified by the server and never reach the device. */
+  pin?: string
 }
 
 export type Shift = {
@@ -122,6 +122,7 @@ export type Shift = {
 export type SaleSyncStatus = 'SYNCED' | 'PENDING'
 
 export type CheckoutModifierRequest = {
+  modifier_id: string
   name: string
   price_sen: number
   type: ModifierType
@@ -165,15 +166,85 @@ export type CompletedSale = {
    * shouted is the only way to trace the order back afterwards.
    */
   offlineLabel: string | null
+  /**
+   * What the customer actually paid.
+   *
+   * For an offline sale this is the figure the cashier read out, and it survives
+   * syncing untouched even if the catalogue has since moved: the books have to
+   * record the money that moved, not the money that would move today.
+   */
   totalSen: number
+  /**
+   * What the same basket would cost at today's menu prices, as the server
+   * recomputed it. Equal to `totalSen` for an online sale. Kept when it differs
+   * so the divergence is visible in a report rather than silently trusted.
+   */
+  menuPriceSen: number
   itemCount: number
   completedAt: string
   businessDate: string
   syncStatus: SaleSyncStatus
-  /** Cashier cannot void a paid sale; they raise a flag and the owner corrects it in the RMS. */
-  flaggedForOwner: boolean
-  flagReason: string | null
   request: FinalizeCheckoutRequest
+}
+
+// ---------------------------------------------------------------------------
+// Counter corrections
+// ---------------------------------------------------------------------------
+
+/**
+ * A full reversal, or a change to what was sold.
+ *
+ * Both are handled at the counter by the cashier. The owner approves nothing:
+ * they see the result as a refund line in the cash book with the reason on it.
+ */
+export type CorrectionKind = 'CANCEL' | 'EXCHANGE'
+
+export type BrandDelta = {
+  brandId: string
+  brandName: string
+  /** Negative when the brand gives value back. Sums with its siblings to `deltaSen`. */
+  deltaSen: number
+}
+
+/**
+ * A contra-entry against an already-paid sale.
+ *
+ * The original sale is never edited and never deleted — invariant 8. A
+ * correction is its own record with its own idempotency key, and the truth about
+ * the order is the original plus every correction against it.
+ */
+export type SaleCorrection = {
+  /** Minted once at intent, like a checkout. Reused across retries. */
+  clientTxnId: string
+  /** Server id once accepted; null while it exists only on this device. */
+  correctionId: string | null
+  /** The sale this reverses or amends. */
+  originalClientTxnId: string
+  /** Snapshotted so the correction still reads correctly if the label is renumbered. */
+  originalQueueLabel: string
+  kind: CorrectionKind
+  reason: string
+  /**
+   * Negative means money goes back to the customer; positive means they owe
+   * more. A cancel is always negative. An exchange can be either.
+   */
+  deltaSen: number
+  /** How `deltaSen` attributes across brands — the same split the sale used. */
+  brandDeltas: BrandDelta[]
+  /** The ticket as it stands after an exchange. Null for a cancel. */
+  replacementItems: CheckoutCartItemRequest[] | null
+  /** The order-wide discount on that replacement ticket. Null for a cancel. */
+  replacementCartDiscountSen: number | null
+  shiftId: string
+  businessDate: string
+  createdAt: string
+  syncStatus: SaleSyncStatus
+}
+
+export type CorrectionResult = {
+  correction: SaleCorrection
+  /** True when the correction was written to the local queue instead of the server. */
+  wasOffline: boolean
 }
 
 export type CheckoutResult = {
