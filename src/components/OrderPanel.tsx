@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  BadgePercent,
   CheckCircle2,
   CloudOff,
   LoaderCircle,
@@ -15,6 +16,7 @@ import {
 import { lineGrossSen } from '../domain/cart'
 import { formatRinggit } from '../domain/money'
 import type { Brand, CartLine, CartTotals, CompletedSale } from '../domain/types'
+import type { AppliedPromotion } from '../domain/promotions'
 import type { DiscountTarget } from './DiscountModal'
 
 /**
@@ -48,6 +50,10 @@ type Props = {
   onEditOrder: () => void
   onMarkPaid: () => void
   onNextOrder: () => void
+  /** Automatic promos on this order, and how much each took off. */
+  appliedPromotions?: AppliedPromotion[]
+  /** Take an automatic promo off this order only. */
+  onRemovePromotion?: (promotionId: string) => void
 }
 
 export function OrderPanel({
@@ -70,6 +76,8 @@ export function OrderPanel({
   onEditOrder,
   onMarkPaid,
   onNextOrder,
+  appliedPromotions = [],
+  onRemovePromotion,
 }: Props) {
   const isEditable = mode === 'BUILDING'
   const wasOffline = paidSale?.syncStatus === 'PENDING'
@@ -200,6 +208,30 @@ export function OrderPanel({
       )}
 
       <div className="shrink-0 space-y-3 border-t border-slate-200 bg-white p-4 shadow-[0_-8px_24px_rgba(15,23,42,0.05)]">
+        {appliedPromotions.length > 0 ? (
+          <ul aria-label="Promotions on this order" className="space-y-1.5">
+            {appliedPromotions.map((promotion) => (
+              <li
+                key={promotion.promotionId}
+                className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-1.5 text-sm"
+              >
+                <BadgePercent aria-hidden="true" className="size-4 shrink-0 text-emerald-700" />
+                <span className="min-w-0 flex-1 truncate font-black text-emerald-950">{promotion.name}</span>
+                <span className="font-bold text-emerald-800">−{formatRinggit(promotion.amountSen)}</span>
+                {isEditable && onRemovePromotion ? (
+                  <button
+                    type="button"
+                    onClick={() => onRemovePromotion(promotion.promotionId)}
+                    aria-label={`Remove ${promotion.name} from this order`}
+                    className="min-h-9 rounded-lg px-2 text-xs font-black text-emerald-900 underline"
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <div className="space-y-1.5 text-sm">
           <div className="flex justify-between text-slate-500">
             <span>Subtotal</span>

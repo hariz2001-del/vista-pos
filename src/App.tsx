@@ -9,7 +9,7 @@ import { ProductGrid } from './components/ProductGrid'
 import { TopBar } from './components/TopBar'
 import { FAKE_ACCOUNT, FAKE_LOGIN, type AccountSnapshot } from './data/fake-account'
 import { getBusinessDate } from './domain/business-date'
-import { promotionsOn } from './domain/promotions'
+import { applyPromotions, isPickable, promotionsOn } from './domain/promotions'
 import { calculateCartTotals } from './domain/cart'
 import {
   cartLinesFromRequest,
@@ -182,7 +182,16 @@ function App() {
     })
   }, [account.products, brandId, categoryId, search])
 
-  const totals = calculateCartTotals(cart, cartDiscountSen)
+  // Automatic promos, worked out afresh from what is in the order. The cart
+  // keeps only what the cashier did; the promos are laid on top, so taking an
+  // item out or removing a promo can never leave a stale discount behind.
+  const [removedPromotions, setRemovedPromotions] = useState<ReadonlySet<string>>(() => new Set())
+  const runningPromotions = useMemo(
+    () => (shift ? promotionsOn(account.promotions, shift.businessDate) : []),
+    [account.promotions, shift],
+  )
+  const promoted = applyPromotions(cart, cartDiscountSen, runningPromotions, removedPromotions)
+  const totals = calculateCartTotals(promoted.lines, promoted.cartDiscountSen)
   const editingRequest = editing
     ? requestAfterCorrections(
         editing.request,
@@ -360,6 +369,7 @@ function App() {
   function clearCart() {
     setCart([])
     setCartDiscountSen(0)
+    setRemovedPromotions(new Set())
   }
 
   /** Lock the ticket for review. A fresh key per confirmation, since an edited order is a new order. */
@@ -390,7 +400,7 @@ function App() {
         shiftId: shift.id,
         businessDate: shift.businessDate,
         clientTxnId,
-        cart,
+        cart: promoted.lines,
         cartDiscountSen: totals.cartDiscountSen,
       })
       const result = await finalizeCheckout({
@@ -729,9 +739,14 @@ function App() {
 
         <OrderPanel
           mode={orderMode}
-          cart={cart}
+          cart={promoted.lines}
+          // The cashier's own order discount: an automatic promo is listed separately.
           cartDiscountSen={cartDiscountSen}
           totals={totals}
+          appliedPromotions={promoted.applied}
+          onRemovePromotion={(promotionId) =>
+            setRemovedPromotions((current) => new Set([...current, promotionId]))
+          }
           brandsById={brandsById}
           isOnline={isOnline}
           isOpen={isPanelOpen}
@@ -765,7 +780,7 @@ function App() {
           cart={cart}
           cartGrossSen={totals.subtotalSen - totals.itemDiscountSen}
           currentCartDiscountSen={cartDiscountSen}
-          promotions={shift ? promotionsOn(account.promotions, shift.businessDate) : []}
+          promotions={runningPromotions.filter(isPickable)}
           onClose={() => setDiscountTarget(null)}
           onApply={applyDiscount}
         />

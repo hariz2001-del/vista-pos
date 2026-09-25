@@ -28,6 +28,11 @@ type BootstrapResponse = {
     name: string
     kind: 'PERCENT' | 'AMOUNT'
     value: number
+    /** Absent from an older API: a whole-order, cashier-picked promo. */
+    scope?: 'ORDER' | 'ITEMS' | 'COMBO'
+    auto_apply?: boolean
+    limit?: 'EACH' | 'ONCE_PER_ORDER'
+    targets?: Array<{ product_id: string | null; category_id: string | null; quantity: number }>
     starts_on: string
     ends_on: string | null
   }>
@@ -134,6 +139,14 @@ function toBootstrap(raw: BootstrapResponse): Bootstrap {
         name: promotion.name,
         kind: promotion.kind,
         value: promotion.value,
+        scope: promotion.scope ?? 'ORDER',
+        autoApply: promotion.auto_apply ?? false,
+        limit: promotion.limit ?? 'EACH',
+        targets: (promotion.targets ?? []).map((target) => ({
+          productId: target.product_id,
+          categoryId: target.category_id,
+          quantity: target.quantity,
+        })),
         startsOn: promotion.starts_on,
         endsOn: promotion.ends_on,
       })),
