@@ -38,14 +38,27 @@ import {
   syncPendingCorrections,
   syncPendingSales,
 } from './lib/api'
-import { cachedBootstrap, EMPTY_SNAPSHOT, loadBootstrap, type Bootstrap } from './lib/bootstrap'
+import {
+  cachedBootstrap,
+  clearCachedBootstrap,
+  EMPTY_SNAPSHOT,
+  loadBootstrap,
+  type Bootstrap,
+} from './lib/bootstrap'
 import { ApiError, onSessionExpired, SessionExpiredError } from './lib/http'
 import {
+  countOtherBusinessRecords,
   countPendingRecords,
   listCorrectionsForShift,
   listSalesForShift,
 } from './lib/offline-queue'
-import { hasSession, signIn } from './lib/session'
+import {
+  clearHandoffFromUrl,
+  handoffCodeInUrl,
+  hasSession,
+  redeemHandoff,
+  signIn,
+} from './lib/session'
 import { EditOrderScreen } from './screens/EditOrderScreen'
 import { RecentSalesScreen } from './screens/RecentSalesScreen'
 import { ShiftCloseScreen } from './screens/ShiftCloseScreen'
@@ -80,8 +93,16 @@ function pinVerdictFor(error: unknown): PinVerdict {
 /** Demo runs on the built-in account; otherwise the last menu this device saw, if any. */
 function initialSnapshot(): AccountSnapshot | null {
   if (IS_DEMO) return FAKE_ACCOUNT
+  // Arriving from vistahub.my may mean a different business: show no menu
+  // until this one's has loaded.
+  if (ARRIVING_HANDOFF) return null
   return cachedBootstrap()?.snapshot ?? null
 }
+
+/** A one-time code from vistahub.my, if the owner just chose the POS there. */
+const ARRIVING_HANDOFF = IS_DEMO ? null : handoffCodeInUrl()
+/** A code works once; React's development double-run must not spend it twice. */
+let handoffStarted = false
 
 function App() {
   const [snapshot, setSnapshot] = useState<AccountSnapshot | null>(initialSnapshot)
@@ -92,7 +113,10 @@ function App() {
   const displayMode = useDisplayMode()
 
   const [screen, setScreen] = useState<Screen>(() =>
-    !IS_DEMO && hasSession() ? 'SHIFT_OPEN' : 'SIGN_IN',
+    !IS_DEMO && !ARRIVING_HANDOFF && hasSession() ? 'SHIFT_OPEN' : 'SIGN_IN',
+  )
+  const [handoffNotice, setHandoffNotice] = useState<string | null>(
+    ARRIVING_HANDOFF ? 'Signing this counter in…' : null,
   )
   const [shift, setShift] = useState<Shift | null>(null)
   /** The server rejected the token mid-shift. Sales keep queuing until sign-in. */
@@ -199,7 +223,7 @@ function App() {
   // On start: refresh the menu and pick up any open shift. Offline, the cached
   // menu stays; a rejected token goes back to the sign-in screen.
   useEffect(() => {
-    if (IS_DEMO || !hasSession()) return
+    if (IS_DEMO || ARRIVING_HANDOFF || !hasSession()) return
     loadBootstrap()
       .then(applyBootstrap)
       .catch((error: unknown) => {
@@ -218,6 +242,22 @@ function App() {
       }),
     [],
   )
+
+  // Records left by another business account never send under this one; say so
+  // before a shift opens, so nobody wonders where they went.
+  const [otherBusinessCount, setOtherBusinessCount] = useState(0)
+  useEffect(() => {
+    if (screen !== 'SHIFT_OPEN' || IS_DEMO) return
+    let cancelled = false
+    countOtherBusinessRecords()
+      .then((count) => {
+        if (!cancelled) setOtherBusinessCount(count)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [screen, snapshot])
 
   // Load this shift's sales once it is open. IndexedDB is an external system, so
   // this belongs in an effect; `refreshSales` awaits before setting state, so the
@@ -416,22 +456,51 @@ function App() {
 
     try {
       await signIn(email, password)
-      const result = await loadBootstrap()
-      setSessionExpired(false)
-      applyBootstrap(result)
-      if (!result.openShift) {
-        // No shift open on the server — including the case where this tablet's
-        // shift was force-closed from the RMS while it was signed out. Anything
-        // still queued carries its own shift id and flushes once a shift is open.
-        setShift(null)
-        setScreen('SHIFT_OPEN')
-      }
+      await enterAfterSignIn()
       return null
     } catch (error) {
       if (error instanceof ApiError) return error.message
       return 'Cannot reach the server. Check the connection and try again.'
     }
   }
+
+  /**
+   * Freshly signed in, by password or from vistahub.my: load this business's
+   * menu and resume its open shift, if it has one. The menu cached from before
+   * is dropped first — it may belong to a different business.
+   */
+  const enterAfterSignIn = useCallback(async () => {
+    clearCachedBootstrap()
+    const result = await loadBootstrap()
+    setSessionExpired(false)
+    applyBootstrap(result)
+    if (!result.openShift) {
+      // No shift open on the server — including the case where this tablet's
+      // shift was force-closed from the RMS while it was signed out. Anything
+      // still queued carries its own shift id and flushes once a shift is open.
+      setShift(null)
+      setScreen('SHIFT_OPEN')
+    }
+  }, [applyBootstrap])
+
+  // Arriving from vistahub.my: swap its one-time code for a counter session.
+  // Runs once: `enterAfterSignIn` is stable, and the flag stops a second run.
+  useEffect(() => {
+    if (!ARRIVING_HANDOFF || handoffStarted) return
+    handoffStarted = true
+    clearHandoffFromUrl()
+    redeemHandoff(ARRIVING_HANDOFF)
+      .then(() => enterAfterSignIn())
+      .then(
+        () => setHandoffNotice(null),
+        (error: unknown) =>
+          setHandoffNotice(
+            error instanceof ApiError
+              ? error.message
+              : 'Cannot reach the server. Check the connection and sign in here.',
+          ),
+      )
+  }, [enterAfterSignIn])
 
   async function verifyOpenPin(pin: string): Promise<PinVerdict> {
     if (IS_DEMO && pin !== FAKE_ACCOUNT.cashier.pin) return { ok: false }
@@ -516,9 +585,10 @@ function App() {
         onSignIn={handleSignIn}
         showDemoHint={IS_DEMO || import.meta.env.DEV}
         notice={
-          sessionExpired
+          handoffNotice ??
+          (sessionExpired
             ? 'This counter was signed out from the owner dashboard. Sales not yet sent are safe on this tablet and will send once it is signed in again.'
-            : null
+            : null)
         }
       />
     )
@@ -531,6 +601,11 @@ function App() {
         outletName={account.account.outletName}
         businessDate={getBusinessDate(new Date())}
         verifyPin={verifyOpenPin}
+        notice={
+          otherBusinessCount > 0
+            ? `This tablet is holding ${otherBusinessCount} unsent record${otherBusinessCount === 1 ? '' : 's'} from a different business account. They are kept safely and will send only when that business signs this tablet in again.`
+            : null
+        }
       />
     )
   }

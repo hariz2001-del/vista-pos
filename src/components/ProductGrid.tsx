@@ -33,11 +33,31 @@ export function ProductGrid({ products, brandsById, onProductTap }: Props) {
           className="group relative min-h-52 overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition duration-150 hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-65"
         >
           <div className="relative h-28 overflow-hidden bg-slate-100">
-            <img
-              src={product.imageUrl}
-              alt=""
-              className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-            />
+            {product.imageUrl ? (
+              <img
+                src={product.imageUrl}
+                alt=""
+                className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+              />
+            ) : (
+              // A new business's items often have no picture yet: the brand
+              // colour and the item's initials stand in, rather than a broken image.
+              <div
+                aria-hidden="true"
+                className="grid h-full w-full place-items-center text-3xl font-black"
+                style={{
+                  backgroundColor: brand?.softColour ?? '#eef1f0',
+                  color: brand?.colour ?? '#101826',
+                }}
+              >
+                {product.name
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((word) => word[0] ?? '')
+                  .join('')
+                  .toUpperCase()}
+              </div>
+            )}
             <span
               style={{ backgroundColor: brand?.colour ?? '#101826' }}
               className="absolute left-2 top-2 rounded-full px-2.5 py-1 text-[0.65rem] font-black uppercase tracking-wider text-white"

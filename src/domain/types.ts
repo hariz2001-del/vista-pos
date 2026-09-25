@@ -156,6 +156,12 @@ export type FinalizeCheckoutRequest = {
 
 export type CompletedSale = {
   clientTxnId: string
+  /**
+   * The business this sale was rung up for. A tablet signed in to another
+   * business later never sends it — it would land in the wrong books. Absent
+   * only on sales queued before the tablet knew its business.
+   */
+  businessId?: string
   /** Server order id once synced; null while the sale exists only on this device. */
   orderId: string | null
   /** `#042` when the server allocated it, `#OFF-01` while pending. */
@@ -216,6 +222,8 @@ export type BrandDelta = {
 export type SaleCorrection = {
   /** Minted once at intent, like a checkout. Reused across retries. */
   clientTxnId: string
+  /** The business it belongs to. See `CompletedSale.businessId`. */
+  businessId?: string
   /** Server id once accepted; null while it exists only on this device. */
   correctionId: string | null
   /** The sale this reverses or amends. */

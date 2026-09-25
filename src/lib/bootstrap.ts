@@ -1,6 +1,7 @@
 import type { AccountSnapshot } from '../data/fake-account'
 import type { ModifierType } from '../domain/types'
 import { apiRequest } from './http'
+import { setDeviceBusiness } from './offline-queue'
 
 /**
  * The menu, the signed-in person, the business profile and any open shift —
@@ -17,6 +18,8 @@ const DEFAULT_AVATAR = '/profiles/aina-test.svg'
 
 type BootstrapResponse = {
   business_date: string
+  /** Which business this device is signed in to. Unsent sales are filed under it. */
+  business_id?: string
   user: { id: string; name: string; role: string } | null
   account: { business_name: string; outlet_name: string } | null
   open_shift: { id: string; business_date: string; opened_at: string } | null
@@ -128,6 +131,8 @@ function toBootstrap(raw: BootstrapResponse): Bootstrap {
 
 export async function loadBootstrap(): Promise<Bootstrap> {
   const raw = await apiRequest<BootstrapResponse>('GET', '/bootstrap')
+  // Before anything is sent or counted: which business's records are ours.
+  if (raw.business_id) await setDeviceBusiness(raw.business_id)
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(raw))
   } catch {
@@ -147,5 +152,17 @@ export function cachedBootstrap(): Bootstrap | null {
     return { ...toBootstrap(JSON.parse(raw) as BootstrapResponse), openShift: null }
   } catch {
     return null
+  }
+}
+
+/**
+ * Forget the cached menu. Signing in to a different business must not show the
+ * last business's menu, even for a moment, even offline.
+ */
+export function clearCachedBootstrap(): void {
+  try {
+    localStorage.removeItem(CACHE_KEY)
+  } catch {
+    // Nothing cached, or nothing we can do.
   }
 }
