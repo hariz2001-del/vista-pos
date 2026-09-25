@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Tag, X } from 'lucide-react'
 import { maxDiscountForLine } from '../domain/cart'
 import { formatRinggit, parseRinggitToSen } from '../domain/money'
+import { describePromotion, promotionAmountSen, type Promotion } from '../domain/promotions'
 import type { CartLine } from '../domain/types'
 
 export type DiscountTarget = { kind: 'cart' } | { kind: 'item'; cartLineId: string }
@@ -11,6 +12,8 @@ type Props = {
   cart: CartLine[]
   cartGrossSen: number
   currentCartDiscountSen: number
+  /** Promos running on the shift's trading day. One tap applies one. */
+  promotions?: Promotion[]
   onClose: () => void
   onApply: (valueSen: number) => void
 }
@@ -26,6 +29,7 @@ export function DiscountModal({
   cart,
   cartGrossSen,
   currentCartDiscountSen,
+  promotions = [],
   onClose,
   onApply,
 }: Props) {
@@ -66,6 +70,31 @@ export function DiscountModal({
             <X aria-hidden="true" className="size-5" />
           </button>
         </div>
+
+        {promotions.length > 0 ? (
+          <div className="mt-5">
+            <p className="text-sm font-black">Promotions today</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {promotions.map((promotion) => {
+                const amountSen = promotionAmountSen(promotion, maximumSen)
+                return (
+                  <button
+                    key={promotion.id}
+                    type="button"
+                    disabled={amountSen <= 0}
+                    onClick={() => onApply(amountSen)}
+                    className="flex min-h-14 flex-col items-start justify-center rounded-xl border-2 border-emerald-200 bg-emerald-50 px-3 text-left hover:bg-emerald-100 disabled:opacity-50"
+                  >
+                    <span className="text-sm font-black text-emerald-950">{promotion.name}</span>
+                    <span className="text-xs font-bold text-emerald-800">
+                      {describePromotion(promotion)} · −{formatRinggit(amountSen)}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ) : null}
 
         <label className="mt-5 block text-sm font-black" htmlFor="discount-value">
           Discount amount (RM)

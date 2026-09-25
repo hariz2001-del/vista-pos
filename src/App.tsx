@@ -9,6 +9,7 @@ import { ProductGrid } from './components/ProductGrid'
 import { TopBar } from './components/TopBar'
 import { FAKE_ACCOUNT, FAKE_LOGIN, type AccountSnapshot } from './data/fake-account'
 import { getBusinessDate } from './domain/business-date'
+import { promotionsOn } from './domain/promotions'
 import { calculateCartTotals } from './domain/cart'
 import {
   cartLinesFromRequest,
@@ -599,7 +600,7 @@ function App() {
       <ShiftOpenScreen
         cashier={account.cashier}
         outletName={account.account.outletName}
-        businessDate={getBusinessDate(new Date())}
+        businessDate={getBusinessDate(new Date(), account.account.dayRolloverHour)}
         verifyPin={verifyOpenPin}
         notice={
           otherBusinessCount > 0
@@ -764,6 +765,7 @@ function App() {
           cart={cart}
           cartGrossSen={totals.subtotalSen - totals.itemDiscountSen}
           currentCartDiscountSen={cartDiscountSen}
+          promotions={shift ? promotionsOn(account.promotions, shift.businessDate) : []}
           onClose={() => setDiscountTarget(null)}
           onApply={applyDiscount}
         />

@@ -21,7 +21,16 @@ type BootstrapResponse = {
   /** Which business this device is signed in to. Unsent sales are filed under it. */
   business_id?: string
   user: { id: string; name: string; role: string } | null
-  account: { business_name: string; outlet_name: string } | null
+  account: { business_name: string; outlet_name: string; day_rollover_hour?: number } | null
+  /** Absent from an older API. */
+  promotions?: Array<{
+    id: string
+    name: string
+    kind: 'PERCENT' | 'AMOUNT'
+    value: number
+    starts_on: string
+    ends_on: string | null
+  }>
   open_shift: { id: string; business_date: string; opened_at: string } | null
   brands: Array<{ id: string; name: string; colour: string; soft_colour: string }>
   categories: Array<{ id: string; brand_id: string; name: string }>
@@ -59,11 +68,13 @@ export const EMPTY_SNAPSHOT: AccountSnapshot = {
     businessName: 'Vista',
     outletName: '',
     timeZone: 'Asia/Kuala_Lumpur',
+    dayRolloverHour: 5,
   },
   cashier: { id: '', name: '', imageUrl: DEFAULT_AVATAR },
   brands: [],
   categories: [],
   products: [],
+  promotions: [],
   isDemo: false,
 }
 
@@ -75,6 +86,7 @@ function toBootstrap(raw: BootstrapResponse): Bootstrap {
         businessName: raw.account?.business_name ?? 'Vista',
         outletName: raw.account?.outlet_name ?? '',
         timeZone: 'Asia/Kuala_Lumpur',
+        dayRolloverHour: raw.account?.day_rollover_hour ?? 5,
       },
       cashier: {
         id: raw.user?.id ?? '',
@@ -116,6 +128,14 @@ function toBootstrap(raw: BootstrapResponse): Bootstrap {
             type: option.type,
           })),
         })),
+      })),
+      promotions: (raw.promotions ?? []).map((promotion) => ({
+        id: promotion.id,
+        name: promotion.name,
+        kind: promotion.kind,
+        value: promotion.value,
+        startsOn: promotion.starts_on,
+        endsOn: promotion.ends_on,
       })),
       isDemo: false,
     },

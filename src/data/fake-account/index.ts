@@ -1,3 +1,4 @@
+import type { Promotion } from '../../domain/promotions'
 import type { Brand, Cashier, Category, Product } from '../../domain/types'
 import { BRANDS, CATEGORIES, PRODUCTS } from './catalogue'
 
@@ -15,11 +16,15 @@ export type AccountSnapshot = {
     businessName: string
     outletName: string
     timeZone: string
+    /** Hour of the morning a trading day ends (0–12). The owner sets it; 5 by default. */
+    dayRolloverHour: number
   }
   cashier: Cashier
   brands: Brand[]
   categories: Category[]
   products: Product[]
+  /** Discount presets; the discount screen offers those running on the shift's date. */
+  promotions: Promotion[]
   isDemo: boolean
 }
 
@@ -29,6 +34,7 @@ export const FAKE_ACCOUNT: AccountSnapshot = {
     businessName: 'Vista Demo Enterprise',
     outletName: 'Vista Counter · Section 7',
     timeZone: 'Asia/Kuala_Lumpur',
+    dayRolloverHour: 5,
   },
   cashier: {
     id: '10000000-0000-4000-8000-000000000001',
@@ -41,6 +47,9 @@ export const FAKE_ACCOUNT: AccountSnapshot = {
   brands: BRANDS,
   categories: CATEGORIES,
   products: PRODUCTS,
+  promotions: [
+    { id: 'demo-promo-10', name: 'Demo 10% off', kind: 'PERCENT', value: 10, startsOn: '2026-01-01', endsOn: null },
+  ],
   isDemo: true,
 }
 
