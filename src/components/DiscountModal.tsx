@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { Tag, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Delete, Tag, X } from 'lucide-react'
 import { maxDiscountForLine } from '../domain/cart'
 import { formatRinggit, parseRinggitToSen } from '../domain/money'
 import { describePromotion, promotionAmountSen, type Promotion } from '../domain/promotions'
+import { KEYPAD, pressAmountKey, type AmountKey } from '../domain/amount-keypad'
 import type { CartLine } from '../domain/types'
 
 export type DiscountTarget = { kind: 'cart' } | { kind: 'item'; cartLineId: string }
@@ -40,17 +41,42 @@ export function DiscountModal({
     ? Math.min(line.discountSen, maximumSen)
     : Math.min(currentCartDiscountSen, maximumSen)
   const [value, setValue] = useState(currentSen > 0 ? senToInput(currentSen) : '')
+  // A prefilled amount is replaced by the first key rather than appended to.
+  const [isPrefilled, setIsPrefilled] = useState(currentSen > 0)
   const parsedSen = parseRinggitToSen(value)
   const isValid = parsedSen !== null && parsedSen <= maximumSen
 
+  // Focus the dialog itself — never an input — so a hardware keyboard still types
+  // into the amount without Android raising its on-screen keyboard.
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useEffect(() => dialogRef.current?.focus(), [])
+
+  function press(key: AmountKey) {
+    setValue((current) => pressAmountKey(isPrefilled && key !== 'back' ? '' : current, key))
+    setIsPrefilled(false)
+  }
+
+  function preset(sen: number) {
+    setValue(senToInput(sen))
+    setIsPrefilled(true)
+  }
+
   return (
     <div
-      className="fixed inset-0 z-[60] grid place-items-center bg-ink/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-ink/40 p-3 outline-none backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="discount-title"
+      ref={dialogRef}
+      tabIndex={-1}
+      onKeyDown={(event) => {
+        if (/^[0-9.]$/.test(event.key)) press(event.key as AmountKey)
+        else if (event.key === 'Backspace') press('back')
+        else if (event.key === 'Enter' && isValid && parsedSen !== null) onApply(parsedSen)
+        else if (event.key === 'Escape') onClose()
+      }}
     >
-      <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl">
+      <div className="w-full max-w-md rounded-3xl bg-white p-4 shadow-2xl sm:p-5">
         <div className="flex items-start gap-3">
           <div className="grid size-11 place-items-center rounded-xl bg-red-50 text-danger">
             <Tag aria-hidden="true" className="size-5" />
@@ -96,20 +122,26 @@ export function DiscountModal({
           </div>
         ) : null}
 
-        <label className="mt-5 block text-sm font-black" htmlFor="discount-value">
-          Discount amount (RM)
-        </label>
-        <div className="mt-2 flex items-center rounded-2xl border-2 border-slate-300 bg-white px-4 focus-within:border-ink">
+        {/*
+          No text field: on an Android tablet a focused input pops the system
+          keyboard over the presets. The keypad below is the only way in.
+        */}
+        <p className="mt-4 text-sm font-black" id="discount-value-label">
+          Discount amount
+        </p>
+        <div
+          className="mt-2 flex min-h-16 items-center rounded-2xl border-2 border-ink bg-white px-4"
+          role="status"
+          aria-labelledby="discount-value-label"
+        >
           <span className="font-black text-slate-500">RM</span>
-          <input
-            id="discount-value"
-            inputMode="decimal"
-            autoFocus
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            placeholder="0.00"
-            className="min-h-16 min-w-0 flex-1 bg-transparent px-3 text-2xl font-black outline-none"
-          />
+          <span
+            className={`min-w-0 flex-1 truncate px-3 text-right text-3xl font-black tabular-nums ${
+              value === '' ? 'text-slate-300' : isPrefilled ? 'text-slate-500' : 'text-ink'
+            }`}
+          >
+            {value === '' ? '0.00' : value}
+          </span>
         </div>
         {parsedSen !== null && parsedSen > maximumSen ? (
           <p className="mt-2 text-sm font-bold text-danger" role="alert">
@@ -117,12 +149,12 @@ export function DiscountModal({
           </p>
         ) : null}
 
-        <div className="mt-4 grid grid-cols-4 gap-2">
+        <div className="mt-3 grid grid-cols-4 gap-2">
           {QUICK_AMOUNTS.map((sen) => (
             <button
               key={sen}
               type="button"
-              onClick={() => setValue(senToInput(sen))}
+              onClick={() => preset(sen)}
               className="min-h-12 rounded-xl bg-slate-100 text-sm font-black hover:bg-slate-200"
             >
               −{formatRinggit(sen)}
@@ -130,14 +162,28 @@ export function DiscountModal({
           ))}
           <button
             type="button"
-            onClick={() => setValue(senToInput(maximumSen))}
+            onClick={() => preset(maximumSen)}
             className="min-h-12 rounded-xl bg-red-50 text-sm font-black text-danger hover:bg-red-100"
           >
             Free
           </button>
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-3">
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {KEYPAD.map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => press(key)}
+              aria-label={key === 'back' ? 'Delete' : key}
+              className="grid min-h-12 place-items-center rounded-xl border border-slate-200 text-xl font-black hover:bg-slate-50 active:bg-slate-100"
+            >
+              {key === 'back' ? <Delete aria-hidden="true" className="size-5" /> : key}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={() => onApply(0)}

@@ -85,8 +85,10 @@ export function OrderPanel({
   return (
     // `lg:relative` rather than `lg:static`: the paid confirmation is absolutely
     // positioned inside this panel, so the panel must be its containing block.
+    // `min-h-0`: as a grid item it would otherwise grow to fit every line, get
+    // clipped by <main>, and the item list would never scroll.
     <aside
-      className={`fixed inset-y-0 right-0 z-40 flex w-[min(92vw,26rem)] flex-col bg-white shadow-2xl transition-transform lg:relative lg:z-auto lg:w-auto lg:translate-x-0 lg:shadow-none ${
+      className={`fixed inset-y-0 right-0 z-40 flex min-h-0 w-[min(92vw,26rem)] flex-col bg-white shadow-2xl transition-transform lg:relative lg:z-auto lg:w-auto lg:translate-x-0 lg:shadow-none ${
         isOpen ? 'translate-x-0' : 'translate-x-full'
       }`}
       aria-label="Current order"
@@ -122,7 +124,7 @@ export function OrderPanel({
           </div>
         </div>
       ) : (
-        <div className="scrollbar-subtle flex-1 space-y-3 overflow-y-auto p-3">
+        <div className="scrollbar-subtle min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-3">
           {cart.map((line) => {
             const grossSen = lineGrossSen(line)
             const appliedDiscountSen = Math.min(line.discountSen, grossSen)

@@ -173,7 +173,7 @@ export function EditOrderScreen({
         </div>
       </header>
 
-      <main className="mx-auto grid min-h-0 w-full max-w-[1800px] flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_23rem] xl:grid-cols-[minmax(0,1fr)_27rem]">
+      <main className="mx-auto grid min-h-0 w-full max-w-[1800px] flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden lg:grid-cols-[minmax(0,1fr)_23rem] xl:grid-cols-[minmax(0,1fr)_27rem]">
         {/* `relative` so the modifier popup stays confined to this column. */}
         <section className="relative flex min-h-0 flex-col border-r border-slate-200/80">
           <FilterBar
