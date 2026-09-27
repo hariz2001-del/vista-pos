@@ -88,8 +88,8 @@ export function TopBar({
           type="button"
           onClick={onOpenRecentSales}
           className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/20 bg-white/10 transition hover:bg-white/20"
-          aria-label="Today's sales"
-          title="Today's sales"
+          aria-label="Receipts"
+          title="Receipts"
         >
           <ReceiptText aria-hidden="true" className="size-5" />
         </button>
