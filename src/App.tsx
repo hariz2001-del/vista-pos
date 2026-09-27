@@ -65,6 +65,7 @@ import { RecentSalesScreen } from './screens/RecentSalesScreen'
 import { ShiftCloseScreen } from './screens/ShiftCloseScreen'
 import { ShiftOpenScreen } from './screens/ShiftOpenScreen'
 import { SignInScreen } from './screens/SignInScreen'
+import { rememberShift, rememberedShift } from './lib/shift-memory'
 
 type Screen =
   | 'SIGN_IN'
@@ -102,6 +103,21 @@ function initialSnapshot(): AccountSnapshot | null {
 
 /** A one-time code from vistahub.my, if the owner just chose the POS there. */
 const ARRIVING_HANDOFF = IS_DEMO ? null : handoffCodeInUrl()
+
+/**
+ * The shift open before this page loaded. A reload lands back on the till with
+ * it, rather than on the PIN screen while the server is asked — or forever, if
+ * there is no connection. Arriving from the hub may be another business: none.
+ */
+const RESUMED_SHIFT = ARRIVING_HANDOFF ? null : rememberedShift()
+
+function initialScreen(): Screen {
+  if (ARRIVING_HANDOFF) return 'SIGN_IN'
+  // The demo has no token; a remembered shift is what "signed in" means there.
+  if (IS_DEMO) return RESUMED_SHIFT ? 'REGISTER' : 'SIGN_IN'
+  if (!hasSession()) return 'SIGN_IN'
+  return RESUMED_SHIFT ? 'REGISTER' : 'SHIFT_OPEN'
+}
 /** A code works once; React's development double-run must not spend it twice. */
 let handoffStarted = false
 
@@ -113,13 +129,14 @@ function App() {
   const isOnline = networkOnline && !isSimulatedOffline
   const displayMode = useDisplayMode()
 
-  const [screen, setScreen] = useState<Screen>(() =>
-    !IS_DEMO && !ARRIVING_HANDOFF && hasSession() ? 'SHIFT_OPEN' : 'SIGN_IN',
-  )
+  const [screen, setScreen] = useState<Screen>(initialScreen)
   const [handoffNotice, setHandoffNotice] = useState<string | null>(
     ARRIVING_HANDOFF ? 'Signing this counter in…' : null,
   )
-  const [shift, setShift] = useState<Shift | null>(null)
+  const [shift, setShift] = useState<Shift | null>(RESUMED_SHIFT)
+  useEffect(() => rememberShift(shift), [shift])
+  /** The startup bootstrap never reached the server; keep trying until it does. */
+  const [needsResync, setNeedsResync] = useState(false)
   /** The server rejected the token mid-shift. Sales keep queuing until sign-in. */
   const [sessionExpired, setSessionExpired] = useState(false)
 
@@ -220,7 +237,13 @@ function App() {
   const applyBootstrap = useCallback((result: Bootstrap) => {
     setSnapshot(result.snapshot)
     const open = result.openShift
-    if (!open) return
+    if (!open) {
+      // The shift this tablet resumed was closed elsewhere — from the RMS, or on
+      // the server while offline. Its queued sales still send; a new one opens.
+      setShift(null)
+      setScreen((current) => (current === 'SIGN_IN' ? current : 'SHIFT_OPEN'))
+      return
+    }
     setShift({
       id: open.id,
       businessDate: open.businessDate,
@@ -238,8 +261,31 @@ function App() {
       .then(applyBootstrap)
       .catch((error: unknown) => {
         if (error instanceof SessionExpiredError) setScreen('SIGN_IN')
+        else setNeedsResync(true)
       })
   }, [applyBootstrap])
+
+  // Started offline or with the server down: the till runs on the remembered
+  // shift and cached menu, and checks in with the server as soon as it answers.
+  useEffect(() => {
+    if (!needsResync || !isOnline || sessionExpired) return
+    let cancelled = false
+    const attempt = () => {
+      loadBootstrap()
+        .then((result) => {
+          if (cancelled) return
+          setNeedsResync(false)
+          applyBootstrap(result)
+        })
+        .catch(() => {})
+    }
+    attempt()
+    const timer = window.setInterval(attempt, SYNC_RETRY_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [needsResync, isOnline, sessionExpired, applyBootstrap])
 
   // Signed out from the owner dashboard: lock straight back to the sign-in
   // screen. Nothing is lost — anything not yet sent stays on the tablet and
