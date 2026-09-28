@@ -156,6 +156,13 @@ export async function serverSubmitCorrection(
   return response
 }
 
+/** A fresh public demo starts with sales already rung up; the next number follows them. */
+export function seedQueueCounter(businessDate: string, lastNumber: number): void {
+  const counters = readJson<Record<string, number>>(COUNTER_KEY, {})
+  counters[businessDate] = lastNumber
+  writeJson(COUNTER_KEY, counters)
+}
+
 /** Demo affordance: forget every sale and reset the day's queue counter. */
 export function resetFakeServer(): void {
   try {

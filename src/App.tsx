@@ -659,7 +659,9 @@ function App() {
         businessDate={getBusinessDate(new Date(), account.account.dayRolloverHour)}
         verifyPin={verifyOpenPin}
         notice={
-          otherBusinessCount > 0
+          IS_DEMO
+            ? 'Demo — the counter PIN is 1234.'
+            : otherBusinessCount > 0
             ? `This tablet is holding ${otherBusinessCount} unsent record${otherBusinessCount === 1 ? '' : 's'} from a different business account. They are kept safely and will send only when that business signs this tablet in again.`
             : null
         }
