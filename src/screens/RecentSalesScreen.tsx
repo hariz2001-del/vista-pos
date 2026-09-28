@@ -311,7 +311,7 @@ function ReceiptDetail({
                   <ul className="ml-11 mt-0.5 space-y-0.5 text-xs text-slate-500">
                     {item.modifiers.map((modifier, modifierIndex) => (
                       <li key={`${modifier.modifier_id}-${modifierIndex}`}>
-                        {modifier.type === 'REMOVAL' ? '−' : '+'} {modifier.name}
+                        {modifier.name}
                         {modifier.price_sen > 0 ? ` (${formatRinggit(modifier.price_sen)})` : ''}
                       </li>
                     ))}
