@@ -34,9 +34,9 @@ export const SPICE_LEVEL: ModifierGroup = {
   minSelect: 1,
   maxSelect: 1,
   options: [
-    { id: 'spice-none', name: 'Not Spicy', priceSen: 0, type: 'REMOVAL' },
-    { id: 'spice-mild', name: 'Medium', priceSen: 0, type: 'REMOVAL' },
-    { id: 'spice-hot', name: 'Extra Spicy', priceSen: 0, type: 'REMOVAL' },
+    { id: 'spice-none', name: 'Not Spicy', priceSen: 0, type: 'ADD_ON' },
+    { id: 'spice-mild', name: 'Medium', priceSen: 0, type: 'ADD_ON' },
+    { id: 'spice-hot', name: 'Extra Spicy', priceSen: 0, type: 'ADD_ON' },
   ],
 }
 
@@ -72,7 +72,7 @@ export const CUP_SIZE: ModifierGroup = {
   minSelect: 1,
   maxSelect: 1,
   options: [
-    { id: 'size-regular', name: 'Regular', priceSen: 0, type: 'REMOVAL' },
+    { id: 'size-regular', name: 'Regular', priceSen: 0, type: 'ADD_ON' },
     { id: 'size-large', name: 'Large', priceSen: 150, type: 'ADD_ON' },
   ],
 }

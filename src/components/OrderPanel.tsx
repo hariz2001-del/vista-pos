@@ -157,7 +157,7 @@ export function OrderPanel({
                       <ul className="mt-2 space-y-1 text-xs text-slate-500">
                         {line.modifiers.map((modifier) => (
                           <li key={`${line.cartLineId}-${modifier.modifierId}`}>
-                            {modifier.type === 'REMOVAL' ? '−' : '+'} {modifier.name}
+                            {modifier.name}
                             {modifier.priceSen > 0 ? ` (${formatRinggit(modifier.priceSen)})` : ''}
                           </li>
                         ))}
