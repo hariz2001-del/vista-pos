@@ -1,5 +1,6 @@
 import { CloudOff, Expand, LogOut, Minimize, PlugZap, ReceiptText, Wifi, WifiOff } from 'lucide-react'
 import { formatBusinessDate } from '../domain/business-date'
+import { nextResetLabel } from '../lib/demo'
 import { Clock } from './Clock'
 
 type Props = {
@@ -68,7 +69,10 @@ export function TopBar({
         </div>
 
         {isDemo ? (
-          <span className="hidden rounded-lg bg-amber-300 px-2.5 py-1 text-xs font-black uppercase tracking-wider text-amber-950 md:inline-flex">
+          <span
+            className="hidden rounded-lg bg-amber-300 px-2.5 py-1 text-xs font-black uppercase tracking-wider text-amber-950 md:inline-flex"
+            title={`Demo data resets at ${nextResetLabel(new Date())}`}
+          >
             Demo
           </span>
         ) : null}

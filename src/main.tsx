@@ -2,8 +2,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import './index.css'
-import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { IS_DEMO } from './lib/api'
+import { ensureFreshDemo, scheduleDemoReset } from './lib/demo'
 
 /**
  * Paired with `registerType: 'prompt'` in vite.config.ts. A newly deployed
@@ -19,10 +20,20 @@ if (!rootElement) {
   throw new Error('Cannot start Vista POS: #root is missing from index.html')
 }
 
-createRoot(rootElement).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </StrictMode>,
-)
+async function start(root: HTMLElement) {
+  if (IS_DEMO) {
+    // Before App is imported: it reads the remembered shift as it loads.
+    await ensureFreshDemo()
+    scheduleDemoReset()
+  }
+  const { default: App } = await import('./App.tsx')
+  createRoot(root).render(
+    <StrictMode>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </StrictMode>,
+  )
+}
+
+void start(rootElement)
