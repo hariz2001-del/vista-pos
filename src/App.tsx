@@ -350,18 +350,58 @@ function App() {
     syncFailuresRef.current = syncFailures
   }, [syncFailures])
 
+  /** The shift's business day is over; open today's as soon as it is safe to. */
+  const [dayEnded, setDayEnded] = useState(false)
+
   // Tell the server this counter is alive, so the owner's banner can tell a quiet
   // shift from a tablet that has dropped off. Sent on open, on reconnect, and
   // every minute. It stops while offline — which is exactly what the banner reads.
   useEffect(() => {
     if (!shift || IS_DEMO || sessionExpired || !isOnline) return
     const beat = () => {
-      sendHeartbeat(syncFailuresRef.current).catch(() => {})
+      sendHeartbeat(syncFailuresRef.current)
+        .then(({ shiftClosed }) => {
+          if (shiftClosed) setDayEnded(true)
+        })
+        .catch(() => {})
     }
     beat()
     const timer = window.setInterval(beat, HEARTBEAT_MS)
     return () => window.clearInterval(timer)
   }, [shift, sessionExpired, isOnline])
+
+  // The business day ends at the owner's rollover hour, and the shift ends with
+  // it: the server closes it, and the till moves on to opening today's. Checked
+  // on the tablet's own clock too, so it does not wait for the next heartbeat.
+  useEffect(() => {
+    if (!shift || IS_DEMO) return
+    const check = () => {
+      if (getBusinessDate(new Date(), account.account.dayRolloverHour) > shift.businessDate) {
+        setDayEnded(true)
+      }
+    }
+    check()
+    const timer = window.setInterval(check, 20_000)
+    return () => window.clearInterval(timer)
+  }, [shift, account.account.dayRolloverHour])
+
+  // Never in the middle of taking payment: the switch waits for the order in
+  // hand to be paid (or back to editing), and needs the server to close the shift.
+  // Whatever is in the cart stays for the new shift.
+  useEffect(() => {
+    if (!dayEnded || !isOnline || sessionExpired || orderMode !== 'BUILDING' || isSubmitting) return
+    let cancelled = false
+    loadBootstrap()
+      .then((result) => {
+        if (cancelled) return
+        setDayEnded(false)
+        applyBootstrap(result)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [dayEnded, isOnline, sessionExpired, orderMode, isSubmitting, applyBootstrap])
 
   // A server that is down while the tablet thinks it is online changes nothing
   // that would re-run the flush above, so queued records are retried on a timer.

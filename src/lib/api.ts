@@ -275,6 +275,12 @@ export async function finalizeCheckout({
     if (error instanceof ApiError && error.code === 'checkout:GROSS_MISMATCH') {
       return keepOnDevice()
     }
+    // The shift was closed under this sale — the business day ended and the
+    // server closed it. The customer has paid, so the sale is kept on the device
+    // and sent as a late sale, which the server takes and flags for the owner.
+    if (error instanceof ApiError && error.code === 'checkout:SHIFT_NOT_OPEN') {
+      return keepOnDevice()
+    }
     // Any other refusal is something retrying cannot fix — show it.
     if (error instanceof ApiError) throw new CheckoutApiError(error.message)
     // No answer, or signed out. The request may or may not have landed, so the
@@ -556,11 +562,16 @@ export async function closeShiftOnServer(
  * failed. It is the only way the owner's banner can tell a quiet counter from a
  * disconnected one: the server cannot see a tablet that has stopped calling.
  */
-export async function sendHeartbeat(consecutiveSyncFailures: number): Promise<void> {
-  if (IS_DEMO) return
-  await apiRequest('POST', '/terminal/heartbeat', {
-    consecutive_sync_failures: consecutiveSyncFailures,
-  })
+export async function sendHeartbeat(consecutiveSyncFailures: number): Promise<{ shiftClosed: boolean }> {
+  if (IS_DEMO) return { shiftClosed: false }
+  const response = await apiRequest<{ ok: boolean; shift_closed?: boolean }>(
+    'POST',
+    '/terminal/heartbeat',
+    { consecutive_sync_failures: consecutiveSyncFailures },
+  )
+  // True when the server has just closed this tablet's shift because its
+  // business day ended — time to open today's.
+  return { shiftClosed: response.shift_closed === true }
 }
 
 export { planExchange }
