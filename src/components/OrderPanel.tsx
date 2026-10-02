@@ -42,6 +42,11 @@ type Props = {
   hasAttempted: boolean
   error: string | null
   paidSale: CompletedSale | null
+  /**
+   * The number this order will most likely get, shown up top so the cashier can
+   * write it on the cup and bag before charging. Null when it cannot be worked out.
+   */
+  nextQueueLabel?: string | null
   onClose: () => void
   onQuantityChange: (cartLineId: string, quantity: number) => void
   onDiscount: (target: DiscountTarget) => void
@@ -68,6 +73,7 @@ export function OrderPanel({
   hasAttempted,
   error,
   paidSale,
+  nextQueueLabel = null,
   onClose,
   onQuantityChange,
   onDiscount,
@@ -93,7 +99,7 @@ export function OrderPanel({
       }`}
       aria-label="Current order"
     >
-      <div className="flex min-h-16 shrink-0 items-center border-b border-slate-200 px-4">
+      <div className="flex min-h-16 shrink-0 items-center border-b border-slate-200 px-4 py-2">
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
             {mode === 'BUILDING' ? 'Current order' : 'Review order'}
@@ -103,10 +109,23 @@ export function OrderPanel({
             {totals.itemCount === 1 ? '' : 's'}
           </h2>
         </div>
+        {nextQueueLabel ? (
+          <div
+            className={`ml-auto rounded-xl px-3 py-1 text-right ${
+              nextQueueLabel.startsWith('#OFF-') ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-ink'
+            }`}
+            aria-label={`This order will be ${nextQueueLabel}`}
+          >
+            <p className="text-[10px] font-black uppercase tracking-wider opacity-60">
+              {nextQueueLabel.startsWith('#OFF-') ? 'Temp. number' : 'Order no.'}
+            </p>
+            <p className="text-2xl font-black leading-none tabular-nums">{nextQueueLabel}</p>
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={onClose}
-          className="ml-auto grid size-11 place-items-center rounded-xl bg-slate-100 lg:hidden"
+          className={`${nextQueueLabel ? 'ml-3' : 'ml-auto'} grid size-11 place-items-center rounded-xl bg-slate-100 lg:hidden`}
           aria-label="Close order panel"
         >
           <X aria-hidden="true" className="size-5" />

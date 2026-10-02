@@ -202,6 +202,25 @@ async function sendCorrection(
 // Sales
 // ---------------------------------------------------------------------------
 
+/**
+ * The queue number the next sale will most likely get, so the cashier can write
+ * it on the cup before charging. Only a preview: nothing is reserved, and a
+ * second terminal checking out first takes it. Offline it is the next `#OFF-NN`,
+ * which is exactly what the sale will be labelled.
+ */
+export async function previewNextQueueLabel(
+  businessDate: string,
+  isOnline: boolean,
+): Promise<string> {
+  if (!isOnline) return nextOfflineLabel(businessDate)
+  if (IS_DEMO) return fakeServer.serverPeekQueueNumber(businessDate)
+  const response = await apiRequest<{ queue_number: string }>(
+    'GET',
+    `/checkout/next-queue-number?business_date=${encodeURIComponent(businessDate)}`,
+  )
+  return response.queue_number
+}
+
 type FinalizeInput = {
   request: FinalizeCheckoutRequest
   totalSen: number

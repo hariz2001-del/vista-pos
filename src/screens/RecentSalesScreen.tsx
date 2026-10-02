@@ -9,12 +9,15 @@ import {
   requestAfterCorrections,
 } from '../domain/corrections'
 import { formatRinggit, formatSignedRinggit } from '../domain/money'
-import type { CompletedSale, SaleCorrection } from '../domain/types'
+import type { Brand, Category, CompletedSale, SaleCorrection } from '../domain/types'
 
 type Props = {
   businessDate: string
   sales: CompletedSale[]
   corrections: SaleCorrection[]
+  /** For the category tag on each receipt line. */
+  brands?: Brand[]
+  categories?: Category[]
   /** Why the last cancel or exchange was not recorded, if the server refused it. */
   error?: string | null
   onBack: () => void
@@ -51,6 +54,8 @@ export function RecentSalesScreen({
   businessDate,
   sales,
   corrections,
+  brands = [],
+  categories = [],
   error = null,
   onBack,
   onCancelSale,
@@ -170,6 +175,8 @@ export function RecentSalesScreen({
               <ReceiptDetail
                 sale={selected}
                 corrections={correctionsFor(selected)}
+                brands={brands}
+                categories={categories}
                 onBackToList={() => setSelectedId(null)}
                 onCancel={() => setCancelling(selected)}
                 onEdit={() => onEditSale(selected)}
@@ -230,12 +237,16 @@ export function RecentSalesScreen({
 function ReceiptDetail({
   sale,
   corrections,
+  brands,
+  categories,
   onBackToList,
   onCancel,
   onEdit,
 }: {
   sale: CompletedSale
   corrections: SaleCorrection[]
+  brands: Brand[]
+  categories: Category[]
   onBackToList: () => void
   onCancel: () => void
   onEdit: () => void
@@ -304,7 +315,13 @@ function ReceiptDetail({
               <li key={`${item.product_id}-${index}`} className="text-sm">
                 <div className="flex items-start gap-3">
                   <span className="w-8 shrink-0 font-black text-slate-500">{item.quantity}×</span>
-                  <span className="min-w-0 flex-1 font-black">{item.product_name}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="font-black">{item.product_name}</span>
+                    <CategoryTag
+                      category={categories.find((category) => category.id === item.category_id)}
+                      brand={brands.find((brand) => brand.id === item.brand_id)}
+                    />
+                  </span>
                   <span className="shrink-0 font-black tabular-nums">{formatRinggit(grossSen)}</span>
                 </div>
                 {item.modifiers.length > 0 ? (
@@ -399,5 +416,31 @@ function ReceiptDetail({
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Which category a receipt line came from — drinks against food, say — at a
+ * glance. Tinted with the brand's colours, as the product tiles are. A category
+ * deleted since the sale has no name to show, so the tag is left off.
+ */
+function CategoryTag({ category, brand }: { category?: Category; brand?: Brand }) {
+  if (!category) return null
+  return (
+    <span
+      // Brand colours are data, so they cannot be Tailwind utility classes.
+      style={{
+        backgroundColor: brand?.softColour ?? '#eef1f0',
+        color: brand?.colour ?? '#101826',
+      }}
+      className="ml-2 inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 align-middle text-[11px] font-black"
+    >
+      <span
+        aria-hidden="true"
+        style={{ backgroundColor: brand?.colour ?? '#101826' }}
+        className="size-1.5 rounded-full"
+      />
+      {category.name}
+    </span>
   )
 }

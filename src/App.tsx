@@ -35,6 +35,7 @@ import {
   IS_DEMO,
   mintClientTxnId,
   openShiftOnServer,
+  previewNextQueueLabel,
   sendHeartbeat,
   syncPendingCorrections,
   syncPendingSales,
@@ -156,6 +157,8 @@ function App() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [paidSale, setPaidSale] = useState<CompletedSale | null>(null)
+  /** What the next sale will most likely be numbered, for writing on the cup. */
+  const [nextQueueLabel, setNextQueueLabel] = useState<string | null>(null)
 
   const [sales, setSales] = useState<CompletedSale[]>([])
   const [corrections, setCorrections] = useState<SaleCorrection[]>([])
@@ -402,6 +405,25 @@ function App() {
       cancelled = true
     }
   }, [dayEnded, isOnline, sessionExpired, orderMode, isSubmitting, applyBootstrap])
+
+  // Re-asked whenever a sale lands (here or, via the flush, from the queue) and
+  // again at Confirm Order, so the number is as fresh as it can be when the
+  // cashier writes it down. Not asked while the paid screen shows the real one.
+  const businessDate = shift?.businessDate ?? null
+  useEffect(() => {
+    if (!businessDate || sessionExpired || orderMode === 'PAID') return
+    let cancelled = false
+    previewNextQueueLabel(businessDate, isOnline)
+      .then((label) => {
+        if (!cancelled) setNextQueueLabel(label)
+      })
+      .catch(() => {
+        if (!cancelled) setNextQueueLabel(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [businessDate, isOnline, sessionExpired, orderMode, sales])
 
   // A server that is down while the tablet thinks it is online changes nothing
   // that would re-run the flush above, so queued records are retried on a timer.
@@ -715,6 +737,8 @@ function App() {
         businessDate={shift.businessDate}
         sales={sales}
         corrections={corrections}
+        brands={account.brands}
+        categories={account.categories}
         error={correctionError}
         onBack={() => {
           setCorrectionError(null)
@@ -842,6 +866,7 @@ function App() {
           hasAttempted={hasAttempted}
           error={checkoutError}
           paidSale={paidSale}
+          nextQueueLabel={nextQueueLabel}
           onClose={() => setIsPanelOpen(false)}
           onQuantityChange={updateQuantity}
           onDiscount={(target) => setDiscountTarget(target)}
