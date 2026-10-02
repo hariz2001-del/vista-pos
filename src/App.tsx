@@ -35,7 +35,9 @@ import {
   IS_DEMO,
   mintClientTxnId,
   openShiftOnServer,
+  loadReceipts,
   previewNextQueueLabel,
+  type Receipts,
   sendHeartbeat,
   syncPendingCorrections,
   syncPendingSales,
@@ -162,6 +164,10 @@ function App() {
 
   const [sales, setSales] = useState<CompletedSale[]>([])
   const [corrections, setCorrections] = useState<SaleCorrection[]>([])
+  /** The whole business day's receipts, from every tablet, while Receipts is open. */
+  const [loadedReceipts, setLoadedReceipts] = useState<{ date: string; data: Receipts } | null>(
+    null,
+  )
   /** Why the last cancel or exchange was refused by the server, if it was. */
   const [correctionError, setCorrectionError] = useState<string | null>(null)
   /** The sale being amended, while the edit screen is open. */
@@ -212,10 +218,19 @@ function App() {
   )
   const promoted = applyPromotions(cart, cartDiscountSen, runningPromotions, removedPromotions)
   const totals = calculateCartTotals(promoted.lines, promoted.cartDiscountSen)
+  const isViewingReceipts = screen === 'RECENT_SALES' || screen === 'EDIT_ORDER'
+  // Only ever the current business day's — a list left over from before the
+  // rollover must not be shown, or acted on, as today's.
+  const receipts =
+    isViewingReceipts && loadedReceipts && loadedReceipts.date === shift?.businessDate
+      ? loadedReceipts.data
+      : null
+  // Another tablet's corrections only reach this one through the day's receipts.
+  const dayCorrections = receipts?.corrections ?? corrections
   const editingRequest = editing
     ? requestAfterCorrections(
         editing.request,
-        corrections.filter(
+        dayCorrections.filter(
           (correction) => correction.originalClientTxnId === editing.clientTxnId,
         ),
       )
@@ -424,6 +439,22 @@ function App() {
       cancelled = true
     }
   }, [businessDate, isOnline, sessionExpired, orderMode, sales])
+
+  // Loaded when Receipts opens, and again whenever this tablet records a sale
+  // or a correction, so a cancel shows at once. Kept while editing a sale, which
+  // reads the day's corrections.
+  useEffect(() => {
+    if (!isViewingReceipts || !businessDate) return
+    let cancelled = false
+    loadReceipts(businessDate, isOnline)
+      .then((data) => {
+        if (!cancelled) setLoadedReceipts({ date: businessDate, data })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [isViewingReceipts, businessDate, isOnline, sales, corrections])
 
   // A server that is down while the tablet thinks it is online changes nothing
   // that would re-run the flush above, so queued records are retried on a timer.
@@ -673,7 +704,7 @@ function App() {
    */
   async function handleCancelSale(sale: CompletedSale, reason: string) {
     setCorrectionError(null)
-    const prior = corrections.filter(
+    const prior = dayCorrections.filter(
       (correction) => correction.originalClientTxnId === sale.clientTxnId,
     )
     try {
@@ -735,8 +766,11 @@ function App() {
     return (
       <RecentSalesScreen
         businessDate={shift.businessDate}
-        sales={sales}
-        corrections={corrections}
+        currentShiftId={shift.id}
+        sales={receipts?.sales ?? sales}
+        corrections={dayCorrections}
+        isLoading={receipts === null}
+        isComplete={receipts?.isComplete ?? true}
         brands={account.brands}
         categories={account.categories}
         error={correctionError}

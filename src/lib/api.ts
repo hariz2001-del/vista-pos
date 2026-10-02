@@ -4,11 +4,13 @@ import { planCancel, planExchange, type ExchangePlan } from '../domain/correctio
 import { assertSen } from '../domain/money'
 import type {
   CartLine,
+  CheckoutCartItemRequest,
   CheckoutResult,
   CompletedSale,
   CorrectionKind,
   CorrectionResult,
   FinalizeCheckoutRequest,
+  ModifierType,
   SaleCorrection,
   Shift,
 } from '../domain/types'
@@ -17,7 +19,9 @@ import { ApiError, apiRequest, NetworkError, SessionExpiredError } from './http'
 import {
   deleteCorrection,
   listPendingCorrections,
+  listCorrectionsForDate,
   listPendingSales,
+  listSalesForDate,
   nextOfflineLabel,
   saveCorrection,
   saveSale,
@@ -201,6 +205,169 @@ async function sendCorrection(
 // ---------------------------------------------------------------------------
 // Sales
 // ---------------------------------------------------------------------------
+
+type ReceiptItemResponse = {
+  product_id: string
+  product_name: string
+  brand_id: string
+  category_id: string
+  quantity: number
+  unit_price_sen: number
+  modifier_total_sen: number
+  discount_sen: number
+  modifiers: Array<{ modifier_id: string | null; name: string; price_sen: number; type: ModifierType }>
+}
+
+type ReceiptsResponse = {
+  orders: Array<{
+    order_id: string
+    client_txn_id: string
+    shift_id: string
+    business_date: string
+    queue_number: string
+    offline_label: string | null
+    total_amount_sen: number
+    menu_price_sen: number
+    item_count: number
+    completed_at: string
+    cart_discount_sen: number
+    cart_items: ReceiptItemResponse[]
+  }>
+  corrections: Array<{
+    correction_id: string
+    client_txn_id: string
+    original_client_txn_id: string
+    original_queue_number: string
+    shift_id: string
+    business_date: string
+    kind: CorrectionKind
+    reason: string
+    delta_sen: number
+    brand_deltas: Array<{ brand_id: string; brand_name: string; delta_sen: number }>
+    replacement_items: ReceiptItemResponse[] | null
+    replacement_cart_discount_sen: number | null
+    created_at: string
+  }>
+}
+
+export type Receipts = {
+  sales: CompletedSale[]
+  corrections: SaleCorrection[]
+  /**
+   * False when the server could not be asked, so only what this tablet holds
+   * is listed — another tablet's sales are missing, not absent.
+   */
+  isComplete: boolean
+}
+
+function toCartItems(items: ReceiptItemResponse[]): CheckoutCartItemRequest[] {
+  return items.map((item) => ({
+    ...item,
+    modifiers: item.modifiers.map((modifier) => ({
+      // Null once the option is deleted from the menu; the name and price stand on their own.
+      modifier_id: modifier.modifier_id ?? '',
+      name: modifier.name,
+      price_sen: modifier.price_sen,
+      type: modifier.type,
+    })),
+  }))
+}
+
+/**
+ * One merged record per key: this tablet's copy while it is still unsent (the
+ * server has not seen it yet), otherwise the server's, which knows about every
+ * tablet.
+ */
+export function mergeByKey<T extends { clientTxnId: string; syncStatus: string }>(
+  server: T[],
+  local: T[],
+): T[] {
+  const merged = new Map(server.map((record) => [record.clientTxnId, record]))
+  for (const record of local) {
+    if (record.syncStatus === 'PENDING' || !merged.has(record.clientTxnId)) {
+      merged.set(record.clientTxnId, record)
+    }
+  }
+  return [...merged.values()]
+}
+
+/**
+ * Every receipt for one business day — from the server, so a sale rung up on
+ * another tablet, or before this one was reinstalled, is listed too. Sales this
+ * tablet has not sent yet are merged in. Offline, only this tablet's are shown.
+ */
+export async function loadReceipts(businessDate: string, isOnline: boolean): Promise<Receipts> {
+  const [localSales, localCorrections] = await Promise.all([
+    listSalesForDate(businessDate),
+    listCorrectionsForDate(businessDate),
+  ])
+  const deviceOnly = { sales: localSales, corrections: localCorrections }
+  // The demo has no server and lives on one browser, so the device is the whole record.
+  if (IS_DEMO) return { ...deviceOnly, isComplete: true }
+  if (!isOnline) return { ...deviceOnly, isComplete: false }
+
+  let response: ReceiptsResponse
+  try {
+    response = await apiRequest<ReceiptsResponse>(
+      'GET',
+      `/receipts?business_date=${encodeURIComponent(businessDate)}`,
+    )
+  } catch {
+    return { ...deviceOnly, isComplete: false }
+  }
+
+  const serverSales: CompletedSale[] = response.orders.map((order) => ({
+    clientTxnId: order.client_txn_id,
+    orderId: order.order_id,
+    queueLabel: order.queue_number,
+    offlineLabel: order.offline_label,
+    totalSen: order.total_amount_sen,
+    menuPriceSen: order.menu_price_sen,
+    itemCount: order.item_count,
+    completedAt: order.completed_at,
+    businessDate: order.business_date,
+    syncStatus: 'SYNCED',
+    request: {
+      shift_id: order.shift_id,
+      client_txn_id: order.client_txn_id,
+      business_date: order.business_date,
+      cart_discount_sen: order.cart_discount_sen,
+      cart_items: toCartItems(order.cart_items),
+    },
+  }))
+  const serverCorrections: SaleCorrection[] = response.corrections.map((correction) => ({
+    clientTxnId: correction.client_txn_id,
+    correctionId: correction.correction_id,
+    originalClientTxnId: correction.original_client_txn_id,
+    originalQueueLabel: correction.original_queue_number,
+    kind: correction.kind,
+    reason: correction.reason,
+    deltaSen: correction.delta_sen,
+    brandDeltas: correction.brand_deltas.map((delta) => ({
+      brandId: delta.brand_id,
+      brandName: delta.brand_name,
+      deltaSen: delta.delta_sen,
+    })),
+    replacementItems: correction.replacement_items ? toCartItems(correction.replacement_items) : null,
+    replacementCartDiscountSen: correction.replacement_cart_discount_sen,
+    shiftId: correction.shift_id,
+    businessDate: correction.business_date,
+    createdAt: correction.created_at,
+    syncStatus: 'SYNCED',
+  }))
+
+  return {
+    sales: mergeByKey(serverSales, localSales).sort((a, b) =>
+      b.completedAt.localeCompare(a.completedAt),
+    ),
+    // A correction made later against this day's sale is listed under the
+    // sale's day by the server; this tablet files it under the sale's day too.
+    corrections: mergeByKey(serverCorrections, localCorrections).sort((a, b) =>
+      a.createdAt.localeCompare(b.createdAt),
+    ),
+    isComplete: true,
+  }
+}
 
 /**
  * The queue number the next sale will most likely get, so the cashier can write
