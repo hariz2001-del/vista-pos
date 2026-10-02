@@ -144,6 +144,14 @@ export async function listSalesForShift(shiftId: string): Promise<CompletedSale[
     .sort((a, b) => b.completedAt.localeCompare(a.completedAt))
 }
 
+/** This business's sales on one business date that this tablet holds, newest first. */
+export async function listSalesForDate(businessDate: string): Promise<CompletedSale[]> {
+  const rows = await allSales()
+  return rows
+    .filter((sale) => sale.businessDate === businessDate && isOurs(sale))
+    .sort((a, b) => b.completedAt.localeCompare(a.completedAt))
+}
+
 /**
  * This business's unsynced sales, in the order they were rung up. Replay must
  * be chronological. Another business's are left alone — see `setDeviceBusiness`.
@@ -206,6 +214,14 @@ export async function listCorrectionsForShift(shiftId: string): Promise<SaleCorr
   const rows = await allCorrections()
   return rows
     .filter((correction) => correction.shiftId === shiftId)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+}
+
+/** This business's corrections against one business date's sales, oldest first. */
+export async function listCorrectionsForDate(businessDate: string): Promise<SaleCorrection[]> {
+  const rows = await allCorrections()
+  return rows
+    .filter((correction) => correction.businessDate === businessDate && isOurs(correction))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 }
 

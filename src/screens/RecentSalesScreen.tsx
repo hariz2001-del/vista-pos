@@ -13,7 +13,13 @@ import type { Brand, Category, CompletedSale, SaleCorrection } from '../domain/t
 
 type Props = {
   businessDate: string
+  /** Only this shift's sales can be corrected: the server refuses a closed shift's. */
+  currentShiftId?: string
   sales: CompletedSale[]
+  /** True until the day's receipts have been fetched. */
+  isLoading?: boolean
+  /** False when the server could not be reached and only this tablet's sales are listed. */
+  isComplete?: boolean
   corrections: SaleCorrection[]
   /** For the category tag on each receipt line. */
   brands?: Brand[]
@@ -35,7 +41,7 @@ function timeOf(iso: string): string {
 }
 
 /**
- * The shift's receipts: the list on the left, the selected receipt in full on
+ * The business day's receipts, from every tablet: the list on the left, the selected receipt in full on
  * the right. On a phone the two take turns.
  *
  * A paid sale is a historical fact: it is never edited and never deleted.
@@ -52,7 +58,10 @@ function timeOf(iso: string): string {
  */
 export function RecentSalesScreen({
   businessDate,
+  currentShiftId,
   sales,
+  isLoading = false,
+  isComplete = true,
   corrections,
   brands = [],
   categories = [],
@@ -78,7 +87,7 @@ export function RecentSalesScreen({
         <div className="min-w-0">
           <h1 className="text-lg font-black leading-tight">Receipts</h1>
           <p className="text-xs font-bold text-slate-300">
-            This shift · {formatBusinessDate(businessDate)}
+            Today · {formatBusinessDate(businessDate)}
           </p>
         </div>
         <button
@@ -98,17 +107,24 @@ export function RecentSalesScreen({
         </p>
       ) : null}
 
+      {isComplete ? null : (
+        <p className="shrink-0 bg-amber-50 p-3 text-center text-sm font-bold text-amber-900" role="status">
+          <CloudOff aria-hidden="true" className="mr-1.5 inline size-4 align-[-3px]" />
+          Offline — showing only the sales rung up on this tablet.
+        </p>
+      )}
+
       {sales.length === 0 ? (
         <div className="grid flex-1 place-items-center p-8 text-center">
           <div>
             <ReceiptText aria-hidden="true" className="mx-auto size-10 text-slate-300" />
-            <p className="mt-3 font-black">No sales yet</p>
+            <p className="mt-3 font-black">{isLoading ? 'Loading receipts…' : 'No sales yet today'}</p>
           </div>
         </div>
       ) : (
         <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] md:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
           <ul
-            aria-label="Receipts this shift"
+            aria-label="Receipts today"
             className={`scrollbar-subtle min-h-0 overflow-y-auto border-r border-slate-200 bg-white ${
               selectedId ? 'hidden md:block' : ''
             }`}
@@ -175,6 +191,7 @@ export function RecentSalesScreen({
               <ReceiptDetail
                 sale={selected}
                 corrections={correctionsFor(selected)}
+                canCorrect={!currentShiftId || selected.request.shift_id === currentShiftId}
                 brands={brands}
                 categories={categories}
                 onBackToList={() => setSelectedId(null)}
@@ -237,6 +254,7 @@ export function RecentSalesScreen({
 function ReceiptDetail({
   sale,
   corrections,
+  canCorrect,
   brands,
   categories,
   onBackToList,
@@ -245,6 +263,7 @@ function ReceiptDetail({
 }: {
   sale: CompletedSale
   corrections: SaleCorrection[]
+  canCorrect: boolean
   brands: Brand[]
   categories: Category[]
   onBackToList: () => void
@@ -397,7 +416,12 @@ function ReceiptDetail({
         ) : null}
       </article>
 
-      {isCancelled ? null : (
+      {isCancelled ? null : !canCorrect ? (
+        <p className="mt-4 rounded-xl bg-white p-3 text-center text-xs font-bold text-slate-500">
+          From an earlier shift — view only. A closed shift's sales can no longer be cancelled or
+          edited.
+        </p>
+      ) : (
         <div className="mt-4 grid grid-cols-2 gap-2">
           <button
             type="button"

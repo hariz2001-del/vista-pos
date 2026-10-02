@@ -3,6 +3,7 @@ import type { CartLine, SaleCorrection } from '../domain/types'
 import {
   CheckoutApiError,
   createCheckoutRequest,
+  mergeByKey,
   toCheckoutApiPayload,
   toCorrectionApiPayload,
 } from './api'
@@ -151,5 +152,26 @@ describe('checkout request', () => {
         },
       ],
     })
+  })
+})
+
+describe('the day’s receipts', () => {
+  const record = (clientTxnId: string, syncStatus: 'SYNCED' | 'PENDING', source: string) => ({
+    clientTxnId,
+    syncStatus,
+    source,
+  })
+
+  it('lists another tablet’s sales from the server alongside this tablet’s', () => {
+    const merged = mergeByKey(
+      [record('a', 'SYNCED', 'server'), record('b', 'SYNCED', 'server')],
+      [record('b', 'SYNCED', 'device')],
+    )
+    expect(merged.map((r) => `${r.clientTxnId}:${r.source}`)).toEqual(['a:server', 'b:server'])
+  })
+
+  it('keeps a sale this tablet has not sent yet, which the server cannot know about', () => {
+    const merged = mergeByKey([record('a', 'SYNCED', 'server')], [record('c', 'PENDING', 'device')])
+    expect(merged.map((r) => r.clientTxnId)).toEqual(['a', 'c'])
   })
 })
