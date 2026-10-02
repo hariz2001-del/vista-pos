@@ -67,6 +67,12 @@ function allocateQueueNumber(businessDate: string): string {
   return `#${next.toString().padStart(3, '0')}`
 }
 
+/** The number the next sale would get, without taking it. */
+export async function serverPeekQueueNumber(businessDate: string): Promise<string> {
+  const counters = readJson<Record<string, number>>(COUNTER_KEY, {})
+  return `#${((counters[businessDate] ?? 0) + 1).toString().padStart(3, '0')}`
+}
+
 /**
  * Total the request twice: once at the prices the device charged, once at today's
  * catalogue prices.
