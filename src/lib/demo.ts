@@ -11,7 +11,7 @@ import { rememberShift } from './shift-memory'
  * It runs entirely in the visitor's browser — the in-page fake server, the
  * device's own IndexedDB — so no visitor ever reaches the real API or another
  * visitor's till. Everything they ring up persists across reloads until the
- * next reset: every 3 hours on the clock in Malaysia (12am, 3am, 6am …), and
+ * next reset: every 3 hours on the clock in Malaysia (00:00, 03:00, 06:00 …), and
  * whenever the business day changes. A fresh demo starts signed in, with a
  * shift already open and a dozen sales from earlier today.
  */
@@ -53,12 +53,13 @@ export function msUntilNextReset(now: Date): number {
   return blockMs - (malaysiaMs % blockMs)
 }
 
-/** "3:00 pm" — when the current demo will reset. */
+/** "15:00" — when the current demo will reset. */
 export function nextResetLabel(now: Date): string {
   return new Intl.DateTimeFormat('en-MY', {
     timeZone: 'Asia/Kuala_Lumpur',
-    hour: 'numeric',
+    hour: '2-digit',
     minute: '2-digit',
+    hourCycle: 'h23',
   }).format(new Date(now.getTime() + msUntilNextReset(now)))
 }
 

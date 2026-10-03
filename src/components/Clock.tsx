@@ -2,9 +2,9 @@ import { Clock3 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 const TIME = new Intl.DateTimeFormat('en-MY', {
-  hour: 'numeric',
+  hour: '2-digit',
   minute: '2-digit',
-  hour12: true,
+  hourCycle: 'h23',
   timeZone: 'Asia/Kuala_Lumpur',
 })
 
