@@ -56,7 +56,7 @@ export function ShiftOpenScreen({ cashier, outletName, businessDate, verifyPin, 
           {isAfterMidnight ? (
             <p className="mt-3 flex items-start gap-2 rounded-2xl bg-amber-50 p-3 text-xs font-bold text-amber-900">
               <Moon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-              After midnight — sales are recorded under yesterday's business date until 5am.
+              After midnight — sales are recorded under yesterday's business date until 05:00.
             </p>
           ) : null}
 
