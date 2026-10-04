@@ -1,4 +1,4 @@
-import { CloudOff, Expand, LogOut, Minimize, PlugZap, ReceiptText, Wifi, WifiOff } from 'lucide-react'
+import { ClipboardList, CloudOff, Expand, LogOut, Minimize, PlugZap, ReceiptText, Wifi, WifiOff } from 'lucide-react'
 import { formatBusinessDate } from '../domain/business-date'
 import { nextResetLabel } from '../lib/demo'
 import { Clock } from './Clock'
@@ -12,6 +12,7 @@ type Props = {
   isOnline: boolean
   pendingCount: number
   onOpenRecentSales: () => void
+  onOpenStockCount: () => void
   onCloseShift: () => void
   displayMode: {
     isActive: boolean
@@ -35,6 +36,7 @@ export function TopBar({
   isOnline,
   pendingCount,
   onOpenRecentSales,
+  onOpenStockCount,
   onCloseShift,
   displayMode,
   simulatedOffline,
@@ -96,6 +98,16 @@ export function TopBar({
           title="Receipts"
         >
           <ReceiptText aria-hidden="true" className="size-5" />
+        </button>
+
+        <button
+          type="button"
+          onClick={onOpenStockCount}
+          className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/20 bg-white/10 transition hover:bg-white/20"
+          aria-label="Closing stock count"
+          title="Closing stock count"
+        >
+          <ClipboardList aria-hidden="true" className="size-5" />
         </button>
 
         {import.meta.env.DEV ? (
