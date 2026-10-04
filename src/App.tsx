@@ -67,6 +67,7 @@ import { EditOrderScreen } from './screens/EditOrderScreen'
 import { RecentSalesScreen } from './screens/RecentSalesScreen'
 import { ShiftCloseScreen } from './screens/ShiftCloseScreen'
 import { ShiftOpenScreen } from './screens/ShiftOpenScreen'
+import { StockCountScreen } from './screens/StockCountScreen'
 import { SignInScreen } from './screens/SignInScreen'
 import { rememberShift, rememberedShift } from './lib/shift-memory'
 
@@ -77,6 +78,7 @@ type Screen =
   | 'RECENT_SALES'
   | 'EDIT_ORDER'
   | 'SHIFT_CLOSE'
+  | 'STOCK_COUNT'
 
 /** How often queued records are retried while the tablet believes it is online. */
 const SYNC_RETRY_MS = 30_000
@@ -807,6 +809,10 @@ function App() {
     )
   }
 
+  if (screen === 'STOCK_COUNT') {
+    return <StockCountScreen isOnline={isOnline} isDemo={IS_DEMO} onBack={() => setScreen('REGISTER')} />
+  }
+
   if (screen === 'SHIFT_CLOSE') {
     return (
       <ShiftCloseScreen
@@ -833,6 +839,7 @@ function App() {
         isOnline={isOnline}
         pendingCount={pendingCount}
         onOpenRecentSales={() => setScreen('RECENT_SALES')}
+        onOpenStockCount={() => setScreen('STOCK_COUNT')}
         onCloseShift={() => setScreen('SHIFT_CLOSE')}
         displayMode={displayMode}
         simulatedOffline={{
