@@ -103,11 +103,13 @@ export function TopBar({
         <button
           type="button"
           onClick={onOpenStockCount}
-          className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/20 bg-white/10 transition hover:bg-white/20"
+          className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 text-sm font-bold transition hover:bg-white/20"
           aria-label="Closing stock count"
           title="Closing stock count"
         >
           <ClipboardList aria-hidden="true" className="size-5" />
+          {/* Spelt out: as a bare icon it was easy to miss. */}
+          <span className="hidden md:inline">Stock count</span>
         </button>
 
         {import.meta.env.DEV ? (
