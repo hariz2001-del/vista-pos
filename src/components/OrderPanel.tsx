@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react'
 import { lineGrossSen } from '../domain/cart'
+import { CategoryTag } from './CategoryTag'
 import { formatRinggit } from '../domain/money'
 import type { Brand, CartLine, CartTotals, CompletedSale } from '../domain/types'
 import type { AppliedPromotion } from '../domain/promotions'
@@ -167,6 +168,7 @@ export function OrderPanel({
                           <span className="text-slate-500">{line.quantity} × </span>
                         )}
                         {line.productName}
+                        <CategoryTag name={line.categoryName} brand={brandsById.get(line.brandId)} />
                       </h3>
                       <p className="shrink-0 font-black">
                         {formatRinggit(grossSen - appliedDiscountSen)}

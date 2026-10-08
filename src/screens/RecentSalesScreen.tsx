@@ -9,6 +9,7 @@ import {
   requestAfterCorrections,
 } from '../domain/corrections'
 import { formatRinggit, formatSignedRinggit } from '../domain/money'
+import { CategoryTag } from '../components/CategoryTag'
 import type { Brand, Category, CompletedSale, SaleCorrection } from '../domain/types'
 
 type Props = {
@@ -337,7 +338,7 @@ function ReceiptDetail({
                   <span className="min-w-0 flex-1">
                     <span className="font-black">{item.product_name}</span>
                     <CategoryTag
-                      category={categories.find((category) => category.id === item.category_id)}
+                      name={categories.find((category) => category.id === item.category_id)?.name}
                       brand={brands.find((brand) => brand.id === item.brand_id)}
                     />
                   </span>
@@ -440,31 +441,5 @@ function ReceiptDetail({
         </div>
       )}
     </div>
-  )
-}
-
-/**
- * Which category a receipt line came from — drinks against food, say — at a
- * glance. Tinted with the brand's colours, as the product tiles are. A category
- * deleted since the sale has no name to show, so the tag is left off.
- */
-function CategoryTag({ category, brand }: { category?: Category; brand?: Brand }) {
-  if (!category) return null
-  return (
-    <span
-      // Brand colours are data, so they cannot be Tailwind utility classes.
-      style={{
-        backgroundColor: brand?.softColour ?? '#eef1f0',
-        color: brand?.colour ?? '#101826',
-      }}
-      className="ml-2 inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 align-middle text-[11px] font-black"
-    >
-      <span
-        aria-hidden="true"
-        style={{ backgroundColor: brand?.colour ?? '#101826' }}
-        className="size-1.5 rounded-full"
-      />
-      {category.name}
-    </span>
   )
 }
