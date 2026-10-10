@@ -9,13 +9,43 @@ import { apiRequest } from './http'
  * a half-done count is kept on the tablet (see `saveDraft`) until it can go.
  */
 
-export type StockBalance = 'MORE_THAN_HALF' | 'HALF' | 'LESS_THAN_HALF'
+export type StockBalance =
+  | 'EMPTY'
+  | 'QUARTER'
+  | 'HALF'
+  | 'THREE_QUARTERS'
+  | 'FULL'
+  // The old three-step scale, on counts sent before the five-step bar.
+  | 'MORE_THAN_HALF'
+  | 'LESS_THAN_HALF'
 
-export const BALANCES: Array<{ value: StockBalance; label: string; long: string }> = [
-  { value: 'MORE_THAN_HALF', label: '> ½', long: 'More than half' },
-  { value: 'HALF', label: '½', long: 'Half' },
-  { value: 'LESS_THAN_HALF', label: '< ½', long: 'Less than half' },
+export type StockLevel = {
+  value: StockBalance
+  /** How full, 0–100: the width of the bar. */
+  pct: number
+  label: string
+  /** The bar's colour at this level: red when finished, through to green when full. */
+  colour: string
+  /** Said at the end of the line: finished, or running low. */
+  note: string | null
+}
+
+/** The five steps on the bar, emptiest first. */
+export const LEVELS: StockLevel[] = [
+  { value: 'EMPTY', pct: 0, label: '0%', colour: '#dc2626', note: 'Finished stock' },
+  { value: 'QUARTER', pct: 25, label: '25%', colour: '#ea580c', note: 'Low stock' },
+  { value: 'HALF', pct: 50, label: '50%', colour: '#eab308', note: null },
+  { value: 'THREE_QUARTERS', pct: 75, label: '75%', colour: '#84cc16', note: null },
+  { value: 'FULL', pct: 100, label: '100%', colour: '#16a34a', note: null },
 ]
+
+/** Any balance as a level to draw. The old scale shows at its nearest step, under its old name. */
+export function levelOf(balance: StockBalance | null | undefined): StockLevel | null {
+  if (!balance) return null
+  if (balance === 'MORE_THAN_HALF') return { ...LEVELS[3]!, value: balance, label: '> ½' }
+  if (balance === 'LESS_THAN_HALF') return { ...LEVELS[1]!, value: balance, label: '< ½', note: null }
+  return LEVELS.find((level) => level.value === balance) ?? null
+}
 
 export type StockItem = {
   id: string
@@ -122,7 +152,12 @@ export function loadDraft(businessDate: string): StockDraft | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY)
     const draft = raw ? (JSON.parse(raw) as StockDraft) : null
-    return draft && draft.businessDate === businessDate ? draft : null
+    if (!draft || draft.businessDate !== businessDate) return null
+    for (const entry of Object.values(draft.entries)) {
+      if (entry.balance === 'MORE_THAN_HALF') entry.balance = 'THREE_QUARTERS'
+      if (entry.balance === 'LESS_THAN_HALF') entry.balance = 'QUARTER'
+    }
+    return draft
   } catch {
     return null
   }

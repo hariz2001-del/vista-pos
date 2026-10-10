@@ -1,8 +1,8 @@
 import { ArrowLeft, CheckCircle2, ClipboardList, RefreshCw, WifiOff } from 'lucide-react'
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { formatBusinessDate } from '../domain/business-date'
+import { StockLevelBar } from '../components/StockLevelBar'
 import {
-  BALANCES,
   EMPTY_ENTRY,
   fetchStockSheet,
   groupStock,
@@ -450,26 +450,7 @@ function StockRow({
           <span className="block text-center text-[0.65rem] font-black uppercase tracking-wider text-slate-400">
             Balance
           </span>
-          <div role="group" aria-label={`${item.name} balance`} className="grid grid-cols-3 gap-1.5">
-            {BALANCES.map((balance) => {
-              const on = entry.balance === balance.value
-              return (
-                <button
-                  key={balance.value}
-                  type="button"
-                  aria-pressed={on}
-                  aria-label={balance.long}
-                  // Tapping the chosen one again clears it.
-                  onClick={() => onChange({ balance: on ? null : balance.value })}
-                  className={`h-14 rounded-xl border-2 text-xl font-black ${
-                    on ? 'border-ink bg-ink text-white' : 'border-slate-200 bg-white text-ink hover:border-slate-400'
-                  }`}
-                >
-                  {balance.label}
-                </button>
-              )
-            })}
-          </div>
+          <StockLevelBar label={`${item.name} balance`} value={entry.balance} onChange={(balance) => onChange({ balance })} />
         </div>
       ) : (
         <span className="hidden md:block" />
