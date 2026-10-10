@@ -9,13 +9,82 @@ import { apiRequest } from './http'
  * a half-done count is kept on the tablet (see `saveDraft`) until it can go.
  */
 
-export type StockBalance = 'MORE_THAN_HALF' | 'HALF' | 'LESS_THAN_HALF'
+export type StockBalance =
+  | 'EMPTY'
+  | 'QUARTER'
+  | 'HALF'
+  | 'THREE_QUARTERS'
+  | 'FULL'
+  // The old three-step scale, on counts sent before the five-step bar.
+  | 'MORE_THAN_HALF'
+  | 'LESS_THAN_HALF'
 
-export const BALANCES: Array<{ value: StockBalance; label: string; long: string }> = [
-  { value: 'MORE_THAN_HALF', label: '> ½', long: 'More than half' },
-  { value: 'HALF', label: '½', long: 'Half' },
-  { value: 'LESS_THAN_HALF', label: '< ½', long: 'Less than half' },
+export type StockLevel = {
+  value: StockBalance
+  /** How full, 0–100: the width of the bar. */
+  pct: number
+  label: string
+  /** The bar's colour at this level: red when finished, through to green when full. */
+  colour: string
+}
+
+/** The five steps on the bar, emptiest first. */
+export const LEVELS: StockLevel[] = [
+  { value: 'EMPTY', pct: 0, label: '0%', colour: '#dc2626' },
+  { value: 'QUARTER', pct: 25, label: '25%', colour: '#ea580c' },
+  { value: 'HALF', pct: 50, label: '50%', colour: '#eab308' },
+  { value: 'THREE_QUARTERS', pct: 75, label: '75%', colour: '#84cc16' },
+  { value: 'FULL', pct: 100, label: '100%', colour: '#16a34a' },
 ]
+
+/** Any balance as a level to draw. The old scale shows at its nearest step, under its old name. */
+export function levelOf(balance: StockBalance | null | undefined): StockLevel | null {
+  if (!balance) return null
+  if (balance === 'MORE_THAN_HALF') return { ...LEVELS[3]!, value: balance, label: '> ½' }
+  if (balance === 'LESS_THAN_HALF') return { ...LEVELS[1]!, value: balance, label: '< ½' }
+  return LEVELS.find((level) => level.value === balance) ?? null
+}
+
+export type StockNote = { text: string; colour: string }
+
+type NoteLine = {
+  trackUnopened: boolean
+  trackOpened: boolean
+  trackBalance: boolean
+  unopenedMilli: number | null
+  openedMilli: number | null
+  balance: StockBalance | null
+}
+
+/**
+ * What to say at the end of a line. The bar is the opened one only, so an item
+ * is finished, or low, only when no unopened stock is left as well: an empty
+ * open bottle with sealed ones on the shelf is neither.
+ */
+export function stockNote(line: NoteLine): StockNote | null {
+  const noneSealed = !line.trackUnopened || line.unopenedMilli === 0
+  if (!noneSealed) return null
+  if (line.trackBalance) {
+    if (line.balance === 'EMPTY') return { text: 'Finished stock', colour: LEVELS[0]!.colour }
+    if (line.balance === 'QUARTER') return { text: 'Low stock', colour: LEVELS[1]!.colour }
+    return null
+  }
+  // No bar to read: nothing unopened, and nothing opened where that is counted.
+  if (line.trackUnopened && (!line.trackOpened || line.openedMilli === 0)) {
+    return { text: 'Finished stock', colour: LEVELS[0]!.colour }
+  }
+  return null
+}
+
+/**
+ * Nothing unopened and nothing opened means the bar can only be at 0%, so it
+ * is set there without a tap — unless a level was already chosen.
+ */
+export function impliedBalance(line: NoteLine): StockBalance | null {
+  if (!line.trackBalance || line.balance !== null || !line.trackOpened || line.openedMilli !== 0) return line.balance
+  if (line.trackUnopened && line.unopenedMilli !== 0) return line.balance
+  return 'EMPTY'
+}
 
 export type StockItem = {
   id: string
@@ -122,7 +191,12 @@ export function loadDraft(businessDate: string): StockDraft | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY)
     const draft = raw ? (JSON.parse(raw) as StockDraft) : null
-    return draft && draft.businessDate === businessDate ? draft : null
+    if (!draft || draft.businessDate !== businessDate) return null
+    for (const entry of Object.values(draft.entries)) {
+      if (entry.balance === 'MORE_THAN_HALF') entry.balance = 'THREE_QUARTERS'
+      if (entry.balance === 'LESS_THAN_HALF') entry.balance = 'QUARTER'
+    }
+    return draft
   } catch {
     return null
   }
