@@ -438,7 +438,7 @@ function StockRow({
 }) {
   const done = isFilled(entry)
   return (
-    <li className="grid grid-cols-2 items-center gap-2 px-4 py-3 md:grid-cols-[minmax(0,1fr)_6.5rem_6.5rem_15rem]">
+    <li className="grid grid-cols-2 items-center gap-2 px-4 py-3 md:grid-cols-[minmax(0,1fr)_6.5rem_18rem]">
       <div className="col-span-2 min-w-0 md:col-span-1">
         <p className={`text-lg font-black leading-tight ${done ? 'text-ink' : 'text-slate-700'}`}>
           {done ? <span className="mr-1 text-green-600">✓</span> : null}
@@ -458,21 +458,10 @@ function StockRow({
         <span className="hidden md:block" />
       )}
 
-      {item.trackOpened ? (
-        <label className="block">
-          <span className="block text-center text-[0.65rem] font-black uppercase tracking-wider text-slate-400">
-            Opened
-          </span>
-          <CountBox label={`${item.name} opened`} value={entry.opened} onChange={(opened) => onChange({ opened })} />
-        </label>
-      ) : (
-        <span className="hidden md:block" />
-      )}
-
       {item.trackBalance ? (
         <div className="col-span-2 md:col-span-1">
           <span className="block text-center text-[0.65rem] font-black uppercase tracking-wider text-slate-400">
-            Balance
+            Opened balance
           </span>
           <StockLevelBar
             label={`${item.name} balance`}
