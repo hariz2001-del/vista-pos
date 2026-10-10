@@ -5,6 +5,8 @@ import { StockLevelBar } from '../components/StockLevelBar'
 import {
   EMPTY_ENTRY,
   fetchStockSheet,
+  impliedBalance,
+  stockNote,
   groupStock,
   isFilled,
   loadDraft,
@@ -21,6 +23,25 @@ type Props = {
   isOnline: boolean
   isDemo: boolean
   onBack: () => void
+}
+
+/** The typed counts as numbers: blank or not a number reads as unknown. */
+function milliOf(entry: StockEntry): { unopenedMilli: number | null; openedMilli: number | null } {
+  const read = (value: string) => {
+    const milli = parseCountMilli(value)
+    return typeof milli === 'number' ? milli : null
+  }
+  return { unopenedMilli: read(entry.unopened), openedMilli: read(entry.opened) }
+}
+
+/** Where the bar would be, for an item without one: just its note, if any. */
+function BarlessNote({ note }: { note: ReturnType<typeof stockNote> }) {
+  if (!note) return <span className="hidden md:block" />
+  return (
+    <p className="col-span-2 text-right text-xs font-black uppercase tracking-wider md:col-span-1" style={{ color: note.colour }}>
+      {note.text}
+    </p>
+  )
 }
 
 /** Enter in a box jumps to the next box, so a whole count is typed without reaching for the screen. */
@@ -144,11 +165,14 @@ export function StockCountScreen({ isOnline, isDemo, onBack }: Props) {
   const canSend = Boolean(sheet && draft) && whoCounted && !hasInvalid && !sending && isOnline
 
   function update(itemId: string, patch: Partial<StockEntry>) {
-    setDraft((current) =>
-      current
-        ? { ...current, entries: { ...current.entries, [itemId]: { ...(current.entries[itemId] ?? EMPTY_ENTRY), ...patch } } }
-        : current,
-    )
+    const item = sheet?.items.find((candidate) => candidate.id === itemId)
+    setDraft((current) => {
+      if (!current) return current
+      const next = { ...(current.entries[itemId] ?? EMPTY_ENTRY), ...patch }
+      // Typing the counts can settle the bar: nothing unopened, nothing opened → 0%.
+      if (item && !('balance' in patch)) next.balance = impliedBalance({ ...item, ...milliOf(next), balance: next.balance })
+      return { ...current, entries: { ...current.entries, [itemId]: next } }
+    })
   }
 
   async function send() {
@@ -450,10 +474,15 @@ function StockRow({
           <span className="block text-center text-[0.65rem] font-black uppercase tracking-wider text-slate-400">
             Balance
           </span>
-          <StockLevelBar label={`${item.name} balance`} value={entry.balance} onChange={(balance) => onChange({ balance })} />
+          <StockLevelBar
+            label={`${item.name} balance`}
+            value={entry.balance}
+            note={stockNote({ ...item, ...milliOf(entry), balance: entry.balance })}
+            onChange={(balance) => onChange({ balance })}
+          />
         </div>
       ) : (
-        <span className="hidden md:block" />
+        <BarlessNote note={stockNote({ ...item, ...milliOf(entry), balance: null })} />
       )}
     </li>
   )
