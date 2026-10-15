@@ -1,3 +1,4 @@
+import { PagerModal } from './components/PagerModal'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ShoppingBasket } from 'lucide-react'
 import { DiscountModal, type DiscountTarget } from './components/DiscountModal'
@@ -160,6 +161,9 @@ function App() {
   const [hasAttempted, setHasAttempted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [isPagerOpen, setIsPagerOpen] = useState(false)
+  const [pagerNumber, setPagerNumber] = useState('')
+  const [pagerRequired, setPagerRequired] = useState(false)
   const [paidSale, setPaidSale] = useState<CompletedSale | null>(null)
   /** What the next sale will most likely be numbered, for writing on the cup. */
   const [nextQueueLabel, setNextQueueLabel] = useState<string | null>(null)
@@ -284,6 +288,18 @@ function App() {
         else setNeedsResync(true)
       })
   }, [applyBootstrap])
+
+  // Pick up RMS settings between orders, without changing an active payment.
+  useEffect(() => {
+    if (IS_DEMO || !isOnline || sessionExpired || !hasSession() || orderMode !== 'BUILDING') return
+    let cancelled = false
+    const refresh = () => loadBootstrap()
+      .then((result) => { if (!cancelled) setSnapshot(result.snapshot) })
+      .catch(() => {})
+    void refresh()
+    const timer = window.setInterval(refresh, 30_000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [isOnline, sessionExpired, orderMode])
 
   // Started offline or with the server down: the till runs on the remembered
   // shift and cached menu, and checks in with the server as soon as it answers.
@@ -508,6 +524,9 @@ function App() {
   }
 
   function clearCart() {
+    setIsPagerOpen(false)
+    setPagerNumber('')
+    setPagerRequired(false)
     setCart([])
     setCartDiscountSen(0)
     setRemovedPromotions(new Set())
@@ -519,6 +538,8 @@ function App() {
     setClientTxnId(mintClientTxnId())
     setHasAttempted(false)
     setCheckoutError(null)
+    setPagerRequired(account.account.pagerEnabled ?? false)
+    setIsPagerOpen(account.account.pagerEnabled ?? false)
     setOrderMode('CONFIRMED')
   }
 
@@ -531,6 +552,10 @@ function App() {
 
   async function markPaid() {
     if (!shift || !clientTxnId || isSubmitting) return
+    if (pagerRequired && !/^[0-9]{1,4}$/.test(pagerNumber)) {
+      setCheckoutError('Enter a pager number before marking paid.')
+      return
+    }
 
     setIsSubmitting(true)
     setCheckoutError(null)
@@ -541,6 +566,7 @@ function App() {
         shiftId: shift.id,
         businessDate: shift.businessDate,
         clientTxnId,
+        pagerNumber: pagerRequired ? pagerNumber : null,
         cart: promoted.lines,
         cartDiscountSen: totals.cartDiscountSen,
       })
@@ -892,6 +918,9 @@ function App() {
 
         <OrderPanel
           mode={orderMode}
+          pagerRequired={pagerRequired}
+          pagerNumber={pagerNumber}
+          onOpenPager={() => setIsPagerOpen(true)}
           cart={promoted.lines}
           // The cashier's own order discount: an automatic promo is listed separately.
           cartDiscountSen={cartDiscountSen}
@@ -927,6 +956,14 @@ function App() {
         <ShoppingBasket aria-hidden="true" className="size-5" />
         Order ({totals.itemCount})
       </button>
+
+      {isPagerOpen && orderMode === 'CONFIRMED' && !hasAttempted ? (
+        <PagerModal
+          currentNumber={pagerNumber}
+          onClose={() => setIsPagerOpen(false)}
+          onApply={(number) => { setPagerNumber(number); setIsPagerOpen(false) }}
+        />
+      ) : null}
 
       {discountTarget ? (
         <DiscountModal

@@ -95,3 +95,13 @@ describe('offline queue across businesses', () => {
     expect((await afterReload.listPendingSales()).map((row) => row.clientTxnId)).toEqual(['a-1'])
   })
 })
+
+it('retains a pager number after an offline sale is saved and the tablet reloads', async () => {
+  const first = await freshQueue()
+  await first.setDeviceBusiness('business-a')
+  const queued = sale('pager-1')
+  queued.request.pager_number = '007'
+  await first.saveSale(queued)
+  const afterReload = await freshQueue()
+  expect((await afterReload.listPendingSales())[0]?.request.pager_number).toBe('007')
+})

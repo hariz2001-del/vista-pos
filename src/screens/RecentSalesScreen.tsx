@@ -169,6 +169,7 @@ export function RecentSalesScreen({
                         ) : null}
                       </span>
                       <span className="block text-xs font-semibold text-slate-500">
+                        {sale.request.pager_number ? `Pager ${sale.request.pager_number} · ` : ''}
                         {timeOf(sale.completedAt)} · {sale.itemCount} item
                         {sale.itemCount === 1 ? '' : 's'}
                       </span>
@@ -301,6 +302,7 @@ function ReceiptDetail({
             </p>
             <p className="mt-2 text-xs font-semibold text-slate-500">
               {timeOf(sale.completedAt)} · QR · manually confirmed
+              {sale.request.pager_number ? ` · Pager ${sale.request.pager_number}` : ''}
             </p>
           </div>
           <div className="ml-auto flex flex-wrap justify-end gap-1.5">

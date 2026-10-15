@@ -31,6 +31,9 @@ import type { DiscountTarget } from './DiscountModal'
 export type OrderPanelMode = 'BUILDING' | 'CONFIRMED' | 'PAID'
 
 type Props = {
+  pagerRequired?: boolean
+  pagerNumber?: string
+  onOpenPager?: () => void
   mode: OrderPanelMode
   cart: CartLine[]
   cartDiscountSen: number
@@ -63,6 +66,9 @@ type Props = {
 }
 
 export function OrderPanel({
+  pagerRequired = false,
+  pagerNumber = '',
+  onOpenPager,
   mode,
   cart,
   cartDiscountSen,
@@ -327,9 +333,20 @@ export function OrderPanel({
 
         {mode === 'CONFIRMED' ? (
           <div className="space-y-2">
+            {pagerRequired ? (
+              <button
+                type="button"
+                disabled={isSubmitting || hasAttempted}
+                onClick={onOpenPager}
+                className="flex min-h-14 w-full items-center justify-between rounded-xl border-2 border-slate-300 px-3 text-sm font-black disabled:opacity-50"
+              >
+                <span>Pager number</span>
+                <span className="text-xl">{pagerNumber || 'Enter number'}</span>
+              </button>
+            ) : null}
             <button
               type="button"
-              disabled={isSubmitting}
+              disabled={isSubmitting || (pagerRequired && !/^[0-9]{1,4}$/.test(pagerNumber))}
               onClick={onMarkPaid}
               className="flex min-h-16 w-full items-center justify-center gap-3 rounded-xl bg-success text-lg font-black text-white shadow-lg hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
@@ -397,6 +414,9 @@ export function OrderPanel({
             >
               {paidSale.queueLabel}
             </p>
+            {paidSale.request.pager_number ? (
+              <p className="mt-3 text-xl font-black">Pager {paidSale.request.pager_number}</p>
+            ) : null}
 
             <p className="mt-4 text-lg font-black text-ink">
               {formatRinggit(paidSale.totalSen)} · {paidSale.itemCount} item

@@ -21,7 +21,7 @@ type BootstrapResponse = {
   /** Which business this device is signed in to. Unsent sales are filed under it. */
   business_id?: string
   user: { id: string; name: string; role: string } | null
-  account: { business_name: string; outlet_name: string; day_rollover_hour?: number } | null
+  account: { business_name: string; outlet_name: string; day_rollover_hour?: number; pager_enabled?: boolean } | null
   /** Absent from an older API. */
   promotions?: Array<{
     id: string
@@ -92,6 +92,7 @@ function toBootstrap(raw: BootstrapResponse): Bootstrap {
         outletName: raw.account?.outlet_name ?? '',
         timeZone: 'Asia/Kuala_Lumpur',
         dayRolloverHour: raw.account?.day_rollover_hour ?? 5,
+        pagerEnabled: raw.account?.pager_enabled ?? false,
       },
       cashier: {
         id: raw.user?.id ?? '',

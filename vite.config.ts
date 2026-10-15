@@ -11,7 +11,7 @@ export default defineConfig({
       // Not 'autoUpdate': a mid-shift takeover can discard a live cart and the
       // IndexedDB queue of unsynced sales. The update waits for a real reload.
       registerType: 'prompt',
-      includeAssets: ['favicon.svg', 'qr-placeholder.svg', 'pwa-icon-192.png', 'pwa-icon-512.png'],
+      includeAssets: ['favicon-64.png', 'apple-touch-icon.png', 'qr-placeholder.svg', 'pwa-icon-192.png', 'pwa-icon-512.png', 'pwa-maskable-512.png'],
       manifest: {
         name: 'Vista Cashier POS',
         short_name: 'Vista POS',
@@ -27,30 +27,10 @@ export default defineConfig({
         // build needs a real 512px raster. The SVG stays for browsers that
         // prefer it.
         icons: [
-          {
-            src: '/pwa-icon-192.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any',
-          },
-          {
-            src: '/pwa-icon-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any',
-          },
-          {
-            src: '/pwa-icon-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
-          {
-            src: '/pwa-icon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
-            purpose: 'any',
-          },
+          { src: '/pwa-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          // Smaller cat inside the launcher's safe circle, so Android's mask never clips the ears.
+          { src: '/pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       devOptions: { enabled: true },
