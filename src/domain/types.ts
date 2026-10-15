@@ -145,6 +145,7 @@ export type CheckoutCartItemRequest = {
 }
 
 export type FinalizeCheckoutRequest = {
+  pager_number?: string | null
   shift_id: string
   /** Minted on the device and reused across retries. This is what makes a replayed sale idempotent. */
   client_txn_id: string

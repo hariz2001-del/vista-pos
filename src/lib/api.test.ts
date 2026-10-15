@@ -32,6 +32,13 @@ const ENVELOPE = {
 }
 
 describe('checkout request', () => {
+  it('keeps the pager number in online and offline checkout payloads', () => {
+    const request = createCheckoutRequest({ ...ENVELOPE, cart: [BASE], cartDiscountSen: 0, pagerNumber: '007' })
+    expect(request.pager_number).toBe('007')
+    expect(toCheckoutApiPayload(request, 1400, 'ONLINE', null).pager_number).toBe('007')
+    expect(toCheckoutApiPayload(request, 1400, 'OFFLINE_SYNC', '#OFF-01').pager_number).toBe('007')
+  })
+
   it('maps immutable cart snapshots to the API contract', () => {
     expect(createCheckoutRequest({ ...ENVELOPE, cart: [BASE], cartDiscountSen: 0 })).toEqual({
       shift_id: 'shift-id',

@@ -51,6 +51,7 @@ export function mintClientTxnId(): string {
 }
 
 type CreateCheckoutRequestInput = {
+  pagerNumber?: string | null
   shiftId: string
   businessDate: string
   clientTxnId: string
@@ -65,6 +66,7 @@ export function createCheckoutRequest({
   clientTxnId,
   cart,
   cartDiscountSen,
+  pagerNumber,
 }: CreateCheckoutRequestInput): FinalizeCheckoutRequest {
   assertSen(cartDiscountSen, 'cart discount')
 
@@ -104,6 +106,7 @@ export function createCheckoutRequest({
     business_date: businessDate,
     cart_discount_sen: cartDiscountSen,
     cart_items: cartItems,
+    ...(pagerNumber ? { pager_number: pagerNumber } : {}),
   }
 }
 
@@ -120,6 +123,7 @@ export function toCheckoutApiPayload(
     business_date: request.business_date,
     origin,
     offline_label: offlineLabel,
+    ...(request.pager_number ? { pager_number: request.pager_number } : {}),
     claimed_total_sen: claimedTotalSen,
     cart_discount_sen: request.cart_discount_sen,
     cart_items: request.cart_items.map((item) => ({
@@ -225,6 +229,7 @@ type ReceiptsResponse = {
     shift_id: string
     business_date: string
     queue_number: string
+    pager_number?: string | null
     offline_label: string | null
     total_amount_sen: number
     menu_price_sen: number
@@ -328,6 +333,7 @@ export async function loadReceipts(businessDate: string, isOnline: boolean): Pro
     businessDate: order.business_date,
     syncStatus: 'SYNCED',
     request: {
+      pager_number: order.pager_number ?? null,
       shift_id: order.shift_id,
       client_txn_id: order.client_txn_id,
       business_date: order.business_date,

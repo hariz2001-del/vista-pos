@@ -18,6 +18,7 @@ export type AccountSnapshot = {
     timeZone: string
     /** Hour of the morning a trading day ends (0–12). The owner sets it; 5 by default. */
     dayRolloverHour: number
+    pagerEnabled?: boolean
   }
   cashier: Cashier
   brands: Brand[]
