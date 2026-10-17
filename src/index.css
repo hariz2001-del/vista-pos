@@ -51,6 +51,16 @@ input:focus-visible {
   scrollbar-width: thin;
 }
 
+/*
+ * No pull-to-refresh, in a browser tab too: one swipe down at the top of the
+ * register reloaded the page mid-rush. (The open order now survives a reload,
+ * but a till should not reload itself under the cashier's thumb.)
+ */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
 @media (display-mode: standalone) {
   body {
     overscroll-behavior: none;

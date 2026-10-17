@@ -71,6 +71,7 @@ import { ShiftOpenScreen } from './screens/ShiftOpenScreen'
 import { StockCountScreen } from './screens/StockCountScreen'
 import { SignInScreen } from './screens/SignInScreen'
 import { rememberShift, rememberedShift } from './lib/shift-memory'
+import { clearOpenOrder, loadOpenOrder, saveOpenOrder } from './lib/open-order'
 
 type Screen =
   | 'SIGN_IN'
@@ -218,6 +219,48 @@ function App() {
   // keeps only what the cashier did; the promos are laid on top, so taking an
   // item out or removing a promo can never leave a stale discount behind.
   const [removedPromotions, setRemovedPromotions] = useState<ReadonlySet<string>>(() => new Set())
+
+  // The order in hand survives a reload (a swipe down in a browser tab, Android
+  // reclaiming the tab, the crash screen's Reload): restored once per shift,
+  // then saved on every change and dropped the moment it is paid.
+  const restoredForShift = useRef<string | null>(null)
+  useEffect(() => {
+    if (!shift || restoredForShift.current === shift.id) return
+    restoredForShift.current = shift.id
+    const saved = loadOpenOrder(shift.id)
+    if (!saved) return
+    // eslint-disable-next-line react/set-state-in-effect -- restoring from an external store, once
+    setCart(saved.cart)
+    setCartDiscountSen(saved.cartDiscountSen)
+    setRemovedPromotions(new Set(saved.removedPromotions))
+    setPagerNumber(saved.pagerNumber)
+    setPagerRequired(saved.pagerRequired)
+    if (saved.orderMode === 'CONFIRMED' && saved.clientTxnId) {
+      // Same transaction id: paying it now is the same checkout, never a second charge.
+      setClientTxnId(saved.clientTxnId)
+      setHasAttempted(saved.hasAttempted)
+      setOrderMode('CONFIRMED')
+      setIsPagerOpen(saved.pagerRequired && !saved.pagerNumber)
+    }
+  }, [shift])
+  useEffect(() => {
+    if (!shift || restoredForShift.current !== shift.id) return
+    if (orderMode === 'PAID') {
+      clearOpenOrder()
+      return
+    }
+    saveOpenOrder({
+      shiftId: shift.id,
+      cart,
+      cartDiscountSen,
+      removedPromotions: [...removedPromotions],
+      orderMode,
+      clientTxnId: orderMode === 'CONFIRMED' ? clientTxnId : null,
+      hasAttempted,
+      pagerNumber,
+      pagerRequired,
+    })
+  }, [shift, cart, cartDiscountSen, removedPromotions, orderMode, clientTxnId, hasAttempted, pagerNumber, pagerRequired])
   const runningPromotions = useMemo(
     () => (shift ? promotionsOn(account.promotions, shift.businessDate) : []),
     [account.promotions, shift],
