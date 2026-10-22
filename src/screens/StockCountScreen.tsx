@@ -124,7 +124,6 @@ export function StockCountScreen({ isOnline, isDemo, onBack }: Props) {
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    if (isDemo) return
     let cancelled = false
     fetchStockSheet()
       .then((loaded) => {
@@ -146,7 +145,7 @@ export function StockCountScreen({ isOnline, isDemo, onBack }: Props) {
     return () => {
       cancelled = true
     }
-  }, [isDemo, attempt])
+  }, [attempt])
 
   // Every keystroke is kept on the tablet until the count is sent.
   useEffect(() => {
@@ -227,22 +226,12 @@ export function StockCountScreen({ isOnline, isDemo, onBack }: Props) {
     </header>
   )
 
-  if (isDemo) {
-    return (
-      <Message
-        header={header}
-        title="Stock count needs a live account"
-        body="In a real business the owner sets up the closing stock list in the RMS, and it appears here."
-      />
-    )
-  }
-
   if (sent) {
     return (
       <Message
         header={header}
         title="Stock count sent"
-        body="The owner can read it in the RMS under Stock."
+        body={isDemo ? 'In a real business the owner reads it in the RMS under Stock. (Demo: nothing was sent.)' : 'The owner can read it in the RMS under Stock.'}
         action={
           <>
             <CheckCircle2 aria-hidden="true" className="mx-auto mt-4 size-14 text-green-600" />

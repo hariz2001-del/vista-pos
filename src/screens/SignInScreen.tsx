@@ -111,9 +111,9 @@ export function SignInScreen({ outletName, businessName, onSignIn, showDemoHint,
           </button>
 
           <p className="mt-5 text-center text-sm font-semibold text-slate-500">
-            New business?{' '}
+            Want Vista for your business?{' '}
             <a href={HUB_URL} className="font-black text-ink underline">
-              Register at {new URL(HUB_URL).host}
+              Get in touch at {new URL(HUB_URL).host}
             </a>
           </p>
 
