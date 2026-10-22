@@ -1,3 +1,5 @@
+import { BRANDS } from '../data/fake-account/catalogue'
+import { getBusinessDate } from '../domain/business-date'
 import { apiRequest } from './http'
 
 /**
@@ -121,6 +123,7 @@ export type StockDraft = {
 export const EMPTY_ENTRY: StockEntry = { unopened: '', opened: '', balance: null }
 
 export function fetchStockSheet(): Promise<StockSheet> {
+  if (DEMO) return Promise.resolve(demoSheet())
   return apiRequest<StockSheet>('GET', '/stock/sheet')
 }
 
@@ -135,7 +138,45 @@ export function submitStockCount(body: {
     balance: StockBalance | null
   }>
 }): Promise<{ id: string }> {
+  // The demo keeps the count on this tablet only; there is no owner to read it.
+  if (DEMO) return Promise.resolve({ id: `demo-count-${body.lines.length}-${Date.now()}` })
   return apiRequest<{ id: string }>('POST', '/stock/counts', body)
+}
+
+const DEMO = import.meta.env.VITE_DEMO === '1'
+
+/** The demo stall's closing list, as an owner would set it up in the RMS. */
+function demoSheet(): StockSheet {
+  const item = (id: number, brandId: string, category: string, name: string, unitLabel: string | null, opened = true, balance = false): StockItem => ({
+    id: `demo-stock-${id}`, brandId, category, subcategory: null, name, unitLabel, trackUnopened: true, trackOpened: opened, trackBalance: balance,
+  })
+  const food = BRANDS[0]!.id
+  const drinks = BRANDS[1]!.id
+  return {
+    businessDate: getBusinessDate(new Date()),
+    branchName: 'Vista Counter · Section 7',
+    brands: BRANDS.map((brand) => ({ id: brand.id, name: brand.name, colour: brand.colour })),
+    items: [
+      item(1, food, 'Dry store', 'Beras (rice)', '10 kg bag'),
+      item(2, food, 'Dry store', 'Minyak masak (cooking oil)', '5 L bottle', true, true),
+      item(3, food, 'Chiller', 'Ayam (chicken)', 'kg', false),
+      item(4, food, 'Chiller', 'Telur (eggs)', 'tray', true),
+      item(5, food, 'Dry store', 'Sambal paste', 'tub', true, true),
+      item(6, food, 'Packaging', 'Polystyrene boxes', 'pack of 50', true),
+      item(7, drinks, 'Dry store', 'Serbuk kopi (coffee powder)', '1 kg pack', true, true),
+      item(8, drinks, 'Dry store', 'Teh (tea dust)', '1 kg pack', true, true),
+      item(9, drinks, 'Chiller', 'Susu pekat (condensed milk)', 'can', true),
+      item(10, drinks, 'Chiller', 'Susu cair (evaporated milk)', 'can', true),
+      item(11, drinks, 'Packaging', 'Plastic cups 16 oz', 'sleeve of 50', true),
+      item(12, drinks, 'Dry store', 'Gula (sugar)', '1 kg pack', true, true),
+    ],
+    staff: [
+      { id: 'demo-staff-1', name: 'Aina', rostered: true, onNow: true },
+      { id: 'demo-staff-2', name: 'Hakim', rostered: true, onNow: false },
+      { id: 'demo-staff-3', name: 'Mei Ling', rostered: false, onNow: false },
+      { id: 'demo-staff-4', name: 'Ravi', rostered: false, onNow: false },
+    ],
+  }
 }
 
 /** Thousandths, as the API stores a count. `2.5` → 2500; blank → null. */
